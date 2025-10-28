@@ -1,5 +1,5 @@
 import { format, toZonedTime } from "date-fns-tz";
-import { parseISO, subDays, subMonths, startOfWeek, startOfMonth, startOfYear } from "date-fns";
+import { parseISO, subDays, subMonths, startOfWeek, startOfMonth } from "date-fns";
 
 /**
  * Obtiene la fecha actual en la zona horaria del usuario
@@ -53,9 +53,8 @@ export function getDateRange(timeRange: string, customFrom?: string, customTo?: 
       return { from: format(subMonths(today, 6), "yyyy-MM-dd"), to: todayISO };
 
     case "year":
-      // Desde el 1 de enero de este año hasta hoy
-      const yearStart = startOfYear(today);
-      return { from: format(yearStart, "yyyy-MM-dd"), to: todayISO };
+      // Últimos 12 meses (no desde enero, sino 12 meses atrás)
+      return { from: format(subMonths(today, 12), "yyyy-MM-dd"), to: todayISO };
 
     case "all":
       // Todo el tiempo (desde hace 10 años hasta hoy)
@@ -93,7 +92,7 @@ export function getTimeRangeLabel(timeRange: string): string {
     case "6months":
       return "Últimos 6 meses";
     case "year":
-      return "Este año";
+      return "Anual";
     case "all":
       return "Todo el tiempo";
     case "custom":

@@ -39,6 +39,7 @@ export function HabitForm({
   const [icon, setIcon] = useState(habit?.icon || "⭐");
   const [color, setColor] = useState(habit?.color || "#BAE1FF"); // Pastel Blue por defecto
   const [allowMultiplePerDay, setAllowMultiplePerDay] = useState(habit?.allowMultiplePerDay || false);
+  const [targetPerDay, setTargetPerDay] = useState(habit?.targetPerDay || 1);
 
   const handleSubmit = async () => {
     if (!title.trim()) return;
@@ -47,7 +48,7 @@ export function HabitForm({
       title: title.trim(),
       description: description.trim() || undefined,
       cadence,
-      targetPerDay: 1,
+      targetPerDay,
       icon,
       color,
       allowMultiplePerDay,
@@ -61,6 +62,7 @@ export function HabitForm({
       setIcon("⭐");
       setColor("#3b82f6");
       setAllowMultiplePerDay(false);
+      setTargetPerDay(1);
     }
   };
 
@@ -166,7 +168,14 @@ export function HabitForm({
         </label>
         <select
           value={cadence}
-          onChange={(e) => setCadence(e.target.value as Cadence)}
+          onChange={(e) => {
+            const newCadence = e.target.value as Cadence;
+            setCadence(newCadence);
+            // Si cambia a semanal o mensual, deshabilitar múltiples check-ins
+            if (newCadence === 'weekly' || newCadence === 'custom') {
+              setAllowMultiplePerDay(false);
+            }
+          }}
           className={`w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
             darkMode
               ? "bg-gray-700 border-gray-600 text-gray-100"
@@ -180,23 +189,56 @@ export function HabitForm({
         </select>
       </div>
 
-      {/* Checkbox: múltiples check-ins por día */}
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="allowMultiple"
-          checked={allowMultiplePerDay}
-          onChange={(e) => setAllowMultiplePerDay(e.target.checked)}
-          className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-          disabled={loading}
-        />
-        <label
-          htmlFor="allowMultiple"
-          className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-700"}`}
-        >
-          Permitir múltiples check-ins por día
-        </label>
-      </div>
+      {/* Checkbox: múltiples check-ins por día - SOLO para hábitos diarios */}
+      {cadence === 'daily' && (
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="allowMultiple"
+            checked={allowMultiplePerDay}
+            onChange={(e) => setAllowMultiplePerDay(e.target.checked)}
+            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+            disabled={loading}
+          />
+          <label
+            htmlFor="allowMultiple"
+            className={`text-sm ${darkMode ? "text-gray-300" : "text-gray-700"}`}
+          >
+            Permitir múltiples check-ins por día
+          </label>
+        </div>
+      )}
+
+      {/* Meta diaria (solo si allowMultiplePerDay está activo) */}
+      {allowMultiplePerDay && (
+        <div>
+          <label
+            className={`block text-sm font-medium mb-2 ${
+              darkMode ? "text-gray-300" : "text-gray-700"
+            }`}
+          >
+            Meta diaria
+          </label>
+          <div className="flex items-center gap-3">
+            <input
+              type="number"
+              min="1"
+              max="99"
+              value={targetPerDay}
+              onChange={(e) => setTargetPerDay(Math.max(1, Math.min(99, parseInt(e.target.value) || 1)))}
+              className={`w-20 border rounded-lg px-4 py-2 text-center focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                darkMode
+                  ? "bg-gray-700 border-gray-600 text-gray-100"
+                  : "bg-white border-gray-300 text-gray-900"
+              }`}
+              disabled={loading}
+            />
+            <span className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+              veces por día (al llegar a esta meta, se reinicia a 0)
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Botones */}
       <div className="flex gap-2">

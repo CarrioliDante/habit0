@@ -28,7 +28,7 @@ export default function Dashboard() {
   const [habitCheckins, setHabitCheckins] = useState<Record<number, Record<string, number>>>({});
 
   // Estado para métricas y UI
-  const [metrics, setMetrics] = useState<Metrics | null>(null);
+  // const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
@@ -54,10 +54,13 @@ export default function Dashboard() {
   // const [comparison, setComparison] = useState<PeriodComparison | null>(null);
   // const [loadingComparison, setLoadingComparison] = useState(false);
 
-  // Calcular el rango de fechas
+  // Calcular el rango de fechas para métricas Y heatmap
   const dateRange = useMemo(() => {
     return getDateRange(timeRange, "", "");
   }, [timeRange]);
+
+  // ELIMINADO: Rango fijo de 12 meses
+  // Ahora el heatmap usa el mismo rango que el filtro seleccionado
 
     // Cargar hábitos
   const loadHabits = useCallback(async () => {
@@ -80,7 +83,8 @@ export default function Dashboard() {
         from: dateRange.from,
         to: dateRange.to,
       });
-      setMetrics(data);
+      // setMetrics(data); // Comentado - métricas no se muestran actualmente
+      console.log("Metrics loaded:", data); // Para debugging si es necesario
     } catch (e: unknown) {
       console.error("Error loading metrics:", e);
     }
@@ -117,10 +121,10 @@ export default function Dashboard() {
     }
 
     try {
-      // Hacer todas las llamadas en paralelo en lugar de secuencial
+      // Hacer todas las llamadas en paralelo usando el rango del filtro actual
       const promises = activeHabits.map((habit) =>
         getCheckins({
-          from: dateRange.from,
+          from: dateRange.from, // Usar el filtro actual
           to: dateRange.to,
           habitId: habit.id,
         }).then((response) => ({ habitId: habit.id, data: response.data }))
@@ -141,21 +145,26 @@ export default function Dashboard() {
     } catch (e) {
       console.error("Error loading checkins:", e);
     }
-  }, [dateRange.from, dateRange.to]);  // Effects
+  }, [dateRange.from, dateRange.to]); // Depende del filtro seleccionado
+
+  // Effects
   useEffect(() => {
     loadHabits();
   }, [loadHabits]);
 
-  // Cargar métricas y checkins solo cuando cambia el rango de fechas O la cantidad de hábitos
-  // Usamos habits.length en lugar de habits para evitar recargas al editar
+  // Cargar métricas cuando cambia el rango de fechas
   useEffect(() => {
     if (habits.length === 0) return;
-
-    // Ejecutar ambas llamadas en paralelo
     loadMetrics();
-    loadHabitCheckins(habits);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange.from, dateRange.to, habits.length]);
+
+  // Cargar checkins cuando cambia el filtro o los hábitos
+  useEffect(() => {
+    if (habits.length === 0) return;
+    loadHabitCheckins(habits);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRange.from, dateRange.to, habits.length]); // Recargar cuando cambia el filtro
 
   // Filtrar hábitos
   const activeHabits = useMemo(() => habits.filter((h) => !h.isArchived), [habits]);
@@ -426,29 +435,6 @@ export default function Dashboard() {
         ? "bg-gradient-to-br from-gray-900 via-slate-900 to-gray-900"
         : "bg-gradient-to-br from-white via-gray-50 to-white"
     }`}>
-      {/* Header minimalista */}
-      <div className={`border-b backdrop-blur-sm ${
-        darkMode
-          ? "border-gray-800 bg-black/50"
-          : "border-gray-200 bg-white/80"
-      }`}>
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className={`text-xl font-bold ${darkMode ? "text-gray-50" : "text-gray-900"}`}>
-            Habit0
-          </h1>
-
-          <button
-            onClick={() => setDarkMode(!darkMode)}
-            className={`p-2 rounded-lg transition-colors ${
-              darkMode ? "hover:bg-gray-800 text-gray-400" : "hover:bg-gray-100 text-gray-600"
-            }`}
-            title="Cambiar tema"
-          >
-            {darkMode ? "☀️" : "🌙"}
-          </button>
-        </div>
-      </div>
-
       <div className="max-w-6xl mx-auto px-4 py-6">
         {/* Error message */}
         {err && (
@@ -506,36 +492,6 @@ export default function Dashboard() {
                 {cad === "all" ? "Todas" : cad === "daily" ? "Diario" : "Semanal"}
               </button>
             ))}
-          </div>
-        )}
-
-        {/* Métricas - solo si hay hábitos */}
-        {metrics && activeHabits.length > 0 && (
-          <div className="mb-6 grid grid-cols-2 gap-3">
-            <div
-              className={`rounded-xl p-4 text-center ${
-                darkMode ? "bg-gray-800/50" : "bg-green-50"
-              }`}
-            >
-              <div className={`text-2xl font-bold ${darkMode ? "text-green-400" : "text-green-600"}`}>
-                {metrics.adherence}%
-              </div>
-              <div className={`text-xs mt-1 ${darkMode ? "text-gray-500" : "text-gray-600"}`}>
-                Adherencia
-              </div>
-            </div>
-            <div
-              className={`rounded-xl p-4 text-center ${
-                darkMode ? "bg-gray-800/50" : "bg-blue-50"
-              }`}
-            >
-              <div className={`text-2xl font-bold ${darkMode ? "text-blue-400" : "text-blue-600"}`}>
-                ✓ {metrics.totalCheckins}
-              </div>
-              <div className={`text-xs mt-1 ${darkMode ? "text-gray-500" : "text-gray-600"}`}>
-                Check-ins
-              </div>
-            </div>
           </div>
         )}
 
@@ -669,6 +625,17 @@ export default function Dashboard() {
           +
         </button>
       )}
+
+      {/* Botón flotante para cambiar tema - inferior izquierda */}
+      <button
+        onClick={() => setDarkMode(!darkMode)}
+        className={`fixed bottom-6 left-6 w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-xl transition-all hover:scale-110 ${
+          darkMode ? "bg-gray-800 hover:bg-gray-700 text-yellow-400" : "bg-gray-200 hover:bg-gray-300 text-gray-700"
+        }`}
+        title="Cambiar tema"
+      >
+        {darkMode ? "☀️" : "🌙"}
+      </button>
 
       {/* Modal para crear hábito */}
       {showCreateModal && (

@@ -9,6 +9,8 @@ import {
   subMonths,
   isSameDay,
   getDay,
+  startOfWeek,
+  endOfWeek,
 } from "date-fns";
 import { es } from "date-fns/locale";
 import { Habit, Cadence } from "@/types";
@@ -159,9 +161,38 @@ export function HabitDetailModal({
     const currentCount = localData[dateStr] || 0;
     let newCount: number;
 
-    if (editedHabit.allowMultiplePerDay) {
-      // Incrementar contador
-      newCount = currentCount + 1;
+    // Para hábitos semanales: solo permitir 1 check-in por semana
+    if (editedHabit.cadence === 'weekly') {
+      // Si ya está marcado, desmarcar
+      if (currentCount > 0) {
+        newCount = 0;
+      } else {
+        // Verificar si ya hay un check-in esta semana
+        const weekStart = startOfWeek(date, { weekStartsOn: 1 });
+        const weekEnd = endOfWeek(date, { weekStartsOn: 1 });
+        const daysInWeek = eachDayOfInterval({ start: weekStart, end: weekEnd });
+
+        const hasCheckinThisWeek = daysInWeek.some(d => {
+          const dStr = format(d, "yyyy-MM-dd");
+          return dStr !== dateStr && (localData[dStr] || 0) > 0;
+        });
+
+        if (hasCheckinThisWeek) {
+          // Ya hay check-in esta semana, no permitir otro
+          alert('Este hábito es semanal. Ya hay un check-in registrado esta semana.');
+          return;
+        }
+
+        newCount = 1;
+      }
+    } else if (editedHabit.allowMultiplePerDay) {
+      // Incrementar contador hasta el máximo (targetPerDay), luego reiniciar a 0
+      const maxCount = editedHabit.targetPerDay || 1;
+      if (currentCount >= maxCount) {
+        newCount = 0; // Reiniciar cuando alcanza el máximo
+      } else {
+        newCount = currentCount + 1;
+      }
     } else {
       // Toggle: si tiene 1, poner 0; si tiene 0, poner 1
       newCount = currentCount > 0 ? 0 : 1;
@@ -185,14 +216,24 @@ export function HabitDetailModal({
     }, 800);
   };
 
-  // Obtener intensidad de color
+  // Obtener intensidad de color (0-5 niveles basado en progreso hacia targetPerDay)
   const getIntensity = (count: number): number => {
     if (count === 0) return 0;
-    if (!editedHabit.allowMultiplePerDay && count >= 1) return 4;
-    if (count === 1) return 1;
-    if (count === 2) return 2;
-    if (count === 3) return 3;
-    return 4;
+
+    // Para hábitos simples (no múltiples): máxima intensidad al completar
+    if (!editedHabit.allowMultiplePerDay && count >= 1) return 5;
+
+    // Para hábitos múltiples: calcular intensidad basada en la meta
+    const target = editedHabit.targetPerDay || 1;
+    const progress = count / target; // 0.0 a 1.0+ (puede ser mayor a 1)
+
+    // Mapear progreso a intensidad 1-5 (5 niveles)
+    // 0% = 0, 1-20% = 1, 21-40% = 2, 41-60% = 3, 61-80% = 4, 81%+ = 5
+    if (progress >= 0.81) return 5; // 81% o más = intensidad máxima
+    if (progress >= 0.61) return 4;
+    if (progress >= 0.41) return 3;
+    if (progress >= 0.21) return 2;
+    return 1; // 1-20% = intensidad mínima
   };
 
   // Scroll automático al final al abrir el modal (sin animación)
@@ -380,7 +421,14 @@ export function HabitDetailModal({
                 <select
                   value={editedHabit.cadence || "daily"}
                   onChange={(e) => {
-                    const newHabit = { ...editedHabit, cadence: e.target.value as Cadence };
+                    const newCadence = e.target.value as Cadence;
+                    const newHabit = { ...editedHabit, cadence: newCadence };
+
+                    // Si cambia a semanal o mensual, deshabilitar múltiples check-ins
+                    if (newCadence === 'weekly' || newCadence === 'custom') {
+                      newHabit.allowMultiplePerDay = false;
+                    }
+
                     setEditedHabit(newHabit);
                     setIsEditingCadence(false);
                     onEdit(newHabit);
@@ -466,31 +514,65 @@ export function HabitDetailModal({
               )}
             </div>
 
-            {/* Múltiples por día */}
-            <div className="flex items-center gap-2">
-              <span className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
-                Múltiple:
-              </span>
-              <button
-                onClick={() => {
-                  const newHabit = { ...editedHabit, allowMultiplePerDay: !editedHabit.allowMultiplePerDay };
-                  setEditedHabit(newHabit);
-                  // Guardar inmediatamente
-                  onEdit(newHabit);
-                }}
-                className={`text-xs px-2 py-1 rounded-lg transition-colors ${
-                  editedHabit.allowMultiplePerDay
-                    ? darkMode
-                      ? "bg-green-900/30 text-green-400"
-                      : "bg-green-100 text-green-700"
-                    : darkMode
-                    ? "text-gray-500 hover:bg-gray-800"
-                    : "text-gray-500 hover:bg-gray-100"
-                }`}
-              >
-                {editedHabit.allowMultiplePerDay ? "Sí" : "No"}
-              </button>
-            </div>
+            {/* Múltiples por día - SOLO para hábitos diarios */}
+            {editedHabit.cadence === 'daily' && (
+              <div className="flex items-center gap-2">
+                <span className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                  Múltiple:
+                </span>
+                <button
+                  onClick={() => {
+                    const newHabit = { ...editedHabit, allowMultiplePerDay: !editedHabit.allowMultiplePerDay };
+                    setEditedHabit(newHabit);
+                    // Guardar inmediatamente
+                    onEdit(newHabit);
+                  }}
+                  className={`text-xs px-2 py-1 rounded-lg transition-colors ${
+                    editedHabit.allowMultiplePerDay
+                      ? darkMode
+                        ? "bg-green-900/30 text-green-400"
+                        : "bg-green-100 text-green-700"
+                      : darkMode
+                      ? "text-gray-500 hover:bg-gray-800"
+                      : "text-gray-500 hover:bg-gray-100"
+                  }`}
+                >
+                  {editedHabit.allowMultiplePerDay ? "Sí" : "No"}
+                </button>
+              </div>
+            )}
+
+            {/* Meta diaria (solo si allowMultiplePerDay está activo Y es diario) */}
+            {editedHabit.allowMultiplePerDay && editedHabit.cadence === 'daily' && (
+              <div className="flex items-center gap-2">
+                <span className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                  Meta:
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  max="99"
+                  value={editedHabit.targetPerDay || 1}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value) || 1;
+                    const newHabit = { ...editedHabit, targetPerDay: Math.max(1, Math.min(99, value)) };
+                    setEditedHabit(newHabit);
+                  }}
+                  onBlur={() => {
+                    // Guardar cuando pierde el foco
+                    onEdit(editedHabit);
+                  }}
+                  className={`text-xs px-2 py-1 rounded-lg w-14 text-center border ${
+                    darkMode
+                      ? "bg-gray-800 border-gray-700 text-white"
+                      : "bg-white border-gray-300 text-gray-900"
+                  }`}
+                />
+                <span className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                  veces/día
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Botones de acción */}
@@ -602,10 +684,11 @@ export function HabitDetailModal({
               const isToday = isSameDay(date, new Date());
               const isFuture = date > new Date();
 
-              // Calcular color de fondo
+              // Calcular color de fondo con escala 0-5
               let bgColor = colorWithAlpha(editedHabit.color || "#BAE1FF", darkMode ? 0.06 : 0.08);
               if (intensity > 0) {
-                const opacityLevels = [0, 0.25, 0.5, 0.75, 1.0];
+                // 6 niveles de opacidad: 0 (vacío), 1 (20%), 2 (40%), 3 (60%), 4 (80%), 5 (100%)
+                const opacityLevels = [0, 0.2, 0.4, 0.6, 0.8, 1.0];
                 bgColor = colorWithAlpha(
                   editedHabit.color || "#BAE1FF",
                   opacityLevels[intensity]
@@ -671,7 +754,7 @@ export function HabitDetailModal({
           <div className={`mt-4 pt-4 border-t ${darkMode ? "border-gray-800" : "border-gray-200"}`}>
             <p className={`text-xs mb-2 text-center ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
               {editedHabit.allowMultiplePerDay
-                ? "Toca un día para agregar check-ins (los puntos indican cantidad)"
+                ? `Toca un día para agregar check-ins. Para reiniciar, superar la meta reinicia a 0.`
                 : "Toca un día para marcar/desmarcar como completado"}
             </p>
             <div className="flex items-center justify-center gap-2">
@@ -679,8 +762,9 @@ export function HabitDetailModal({
                 Menos
               </span>
               <div className="flex gap-1">
+                {/* Base (0%) */}
                 <div
-                  className="w-5 h-5 rounded-sm"
+                  className="w-4 h-4 rounded-sm"
                   style={{
                     backgroundColor: colorWithAlpha(
                       editedHabit.color || "#BAE1FF",
@@ -688,20 +772,29 @@ export function HabitDetailModal({
                     ),
                   }}
                 />
+                {/* 20% */}
                 <div
-                  className="w-5 h-5 rounded-sm"
-                  style={{ backgroundColor: colorWithAlpha(editedHabit.color || "#BAE1FF", 0.25) }}
+                  className="w-4 h-4 rounded-sm"
+                  style={{ backgroundColor: colorWithAlpha(editedHabit.color || "#BAE1FF", 0.2) }}
                 />
+                {/* 40% */}
                 <div
-                  className="w-5 h-5 rounded-sm"
-                  style={{ backgroundColor: colorWithAlpha(editedHabit.color || "#BAE1FF", 0.5) }}
+                  className="w-4 h-4 rounded-sm"
+                  style={{ backgroundColor: colorWithAlpha(editedHabit.color || "#BAE1FF", 0.4) }}
                 />
+                {/* 60% */}
                 <div
-                  className="w-5 h-5 rounded-sm"
-                  style={{ backgroundColor: colorWithAlpha(editedHabit.color || "#BAE1FF", 0.75) }}
+                  className="w-4 h-4 rounded-sm"
+                  style={{ backgroundColor: colorWithAlpha(editedHabit.color || "#BAE1FF", 0.6) }}
                 />
+                {/* 80% */}
                 <div
-                  className="w-5 h-5 rounded-sm"
+                  className="w-4 h-4 rounded-sm"
+                  style={{ backgroundColor: colorWithAlpha(editedHabit.color || "#BAE1FF", 0.8) }}
+                />
+                {/* 100% */}
+                <div
+                  className="w-4 h-4 rounded-sm"
                   style={{ backgroundColor: colorWithAlpha(editedHabit.color || "#BAE1FF", 1.0) }}
                 />
               </div>

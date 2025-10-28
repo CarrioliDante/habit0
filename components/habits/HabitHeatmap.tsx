@@ -35,8 +35,10 @@ export function HabitHeatmap({
   from,
   to,
   color = "#BAE1FF",
+  targetPerDay = 1,
   allowMultiplePerDay = false,
   darkMode = false,
+  cadence = "daily",
   isInModal = false,
 }: HabitHeatmapProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -56,6 +58,53 @@ export function HabitHeatmap({
   const colorWithAlpha = (hex: string, alpha = 1) => {
     const { r, g, b } = hexToRgb(hex || '#BAE1FF');
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
+  // Helper: Para hábitos semanales, encontrar el día de check-in de cada semana
+  const getWeeklyCheckinDates = useMemo(() => {
+    if (cadence !== 'weekly') return new Set<string>();
+
+    const checkinDates = new Set<string>();
+    Object.entries(data).forEach(([date, count]) => {
+      if (count > 0) {
+        checkinDates.add(date);
+      }
+    });
+    return checkinDates;
+  }, [cadence, data]);
+
+  // Helper: Calcular intensidad para hábitos semanales basada en distancia al día de check-in
+  const getWeeklyIntensity = (date: Date): number => {
+    const dateStr = format(date, 'yyyy-MM-dd');
+
+    // Si este día tiene el check-in, intensidad máxima
+    if (getWeeklyCheckinDates.has(dateStr)) return 5;
+
+    // Buscar el día de check-in de esta semana
+    const weekStart = startOfWeek(date, { weekStartsOn: 1 }); // Lunes
+    const weekEnd = endOfWeek(date, { weekStartsOn: 1 }); // Domingo
+
+    let checkinDate: Date | null = null;
+    getWeeklyCheckinDates.forEach(dateStr => {
+      const d = parseISO(dateStr);
+      if (d >= weekStart && d <= weekEnd) {
+        checkinDate = d;
+      }
+    });
+
+    // Si no hay check-in esta semana, intensidad 0
+    if (!checkinDate) return 0;
+
+    // Calcular distancia en días desde el check-in
+    const daysDiff = Math.abs(differenceInDays(date, checkinDate));
+
+    // Mapear distancia a intensidad (gradiente suave)
+    // 0 días = 5, 1 día = 4, 2 días = 3, 3 días = 2, 4+ días = 1
+    if (daysDiff === 0) return 5;
+    if (daysDiff === 1) return 4;
+    if (daysDiff === 2) return 3;
+    if (daysDiff === 3) return 2;
+    return 1;
   };
 
   // Calcular el rango de días para determinar el layout
@@ -225,19 +274,26 @@ export function HabitHeatmap({
 
   /**
    * Calcular intensidad del color según check-ins
-   * Escala de 0 a 4 basada en múltiples completaciones
-   * Si el hábito NO permite múltiples por día, 1+ check-in = intensidad máxima
+   * Escala de 0 a 5 basada en progreso hacia targetPerDay
+   * Una vez alcanzada la meta, permanece en intensidad máxima (5)
    */
   const getIntensity = (count: number): number => {
     if (count === 0) return 0;
-    // Si el hábito solo permite uno por día, brillo máximo al completar
+
+    // Para hábitos simples (no múltiples): máxima intensidad al completar
     if (!allowMultiplePerDay && count >= 1) return 5;
-    // Para hábitos con múltiples por día, escala gradual
-    if (count === 1) return 1;
-    if (count === 2) return 2;
-    if (count === 3) return 3;
-    if (count === 4) return 4;
-    return 5; // 4 o más
+
+    // Para hábitos múltiples: calcular intensidad basada en la meta
+    const target = targetPerDay || 1;
+    const progress = count / target; // 0.0 a 1.0+ (puede ser mayor a 1)
+
+    // Mapear progreso a intensidad 1-5 (5 niveles)
+    // 0% = 0, 1-20% = 1, 21-40% = 2, 41-60% = 3, 61-80% = 4, 81%+ = 5
+    if (progress >= 0.81) return 5; // 81% o más = intensidad máxima
+    if (progress >= 0.61) return 4;
+    if (progress >= 0.41) return 3;
+    if (progress >= 0.21) return 2;
+    return 1; // 1-20% = intensidad mínima
   };
 
   /**
@@ -246,7 +302,14 @@ export function HabitHeatmap({
   const getBackgroundColor = (date: Date): { backgroundColor?: string; opacity?: number; className: string } => {
     const dateStr = format(date, "yyyy-MM-dd");
     const count = data[dateStr] || 0;
-    const intensity = getIntensity(count);
+
+    // Para hábitos semanales, usar lógica especial de gradiente
+    let intensity: number;
+    if (cadence === 'weekly') {
+      intensity = getWeeklyIntensity(date);
+    } else {
+      intensity = getIntensity(count);
+    }
 
     // Fuera del rango del hábito (pero dentro de los 12 meses mostrados)
     if (date < parseISO(from) || date > parseISO(to)) {
@@ -267,8 +330,8 @@ export function HabitHeatmap({
       }
 
     // Con check-ins - usar el color del hábito con opacidad progresiva
-    // Opacidades más diferenciadas para mejor visibilidad
-    const opacityLevels = [0, 0.25, 0.5, 0.75, 1.0];
+    // 6 niveles de opacidad: 0 (vacío), 1 (20%), 2 (40%), 3 (60%), 4 (80%), 5 (100%)
+    const opacityLevels = [0, 0.2, 0.4, 0.6, 0.8, 1.0];
     const opacityValue = opacityLevels[intensity];
 
     return {
@@ -291,7 +354,7 @@ export function HabitHeatmap({
       {!isInModal && viewMode === 'year' && (
         <div className="flex items-center justify-between mb-1.5">
           <div className={`text-[11px] font-medium ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
-            Últimos 12 meses
+            Anual
           </div>
           <div className={`text-[10px] ${darkMode ? "text-gray-500" : "text-gray-500"}`}>
             Vista anual
@@ -385,8 +448,17 @@ export function HabitHeatmap({
         )}
 
         <div className="flex">
-          {/* Eje izquierdo: días de la semana */}
-          <div className={`flex flex-col mr-1.5 ${viewMode === 'year' ? 'gap-0.5' : 'gap-1'}`} aria-hidden>
+          {/* Eje izquierdo: días de la semana - FIJO con sticky y gradiente */}
+          <div
+            className={`flex flex-col mr-1.5 ${viewMode === 'year' ? 'gap-0.5' : 'gap-1'} sticky left-0 z-10`}
+            style={{
+              background: darkMode
+                ? 'linear-gradient(to right, #111827 0%, #111827 75%, transparent 100%)'
+                : 'linear-gradient(to right, #ffffff 0%, #ffffff 25%, transparent 100%)',
+              paddingRight: '8px',
+            }}
+            aria-hidden
+          >
             {weekDays.map((d) => {
               const size = isInModal
                 ? (viewMode === 'year' ? 'w-4 h-4' : 'w-5 h-5')
@@ -398,7 +470,9 @@ export function HabitHeatmap({
               return (
                 <div
                   key={d}
-                  className={`text-[10px] text-center flex items-center justify-center ${size}`}
+                  className={`text-[10px] text-center flex items-center justify-center ${size} font-medium ${
+                    darkMode ? 'text-gray-500' : 'text-gray-500'
+                  }`}
                   style={{ height }}
                 >
                   {d}
@@ -447,15 +521,21 @@ export function HabitHeatmap({
           <div className={`flex items-center justify-end gap-2 text-[10px] mt-1.5 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
             <span>Menos</span>
             <div className="flex gap-1">
-              {/* Color base apagado */}
+              {/* Base (0%) */}
               <div
-                className="w-4 h-4 rounded-sm"
+                className="w-3 h-3 rounded-sm"
                 style={{ backgroundColor: colorWithAlpha(color, darkMode ? 0.06 : 0.08) }}
               />
-              <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: colorWithAlpha(color, 0.25) }} />
-              <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: colorWithAlpha(color, 0.5) }} />
-              <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: colorWithAlpha(color, 0.75) }} />
-              <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: colorWithAlpha(color, 1.0) }} />
+              {/* 20% */}
+              <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorWithAlpha(color, 0.2) }} />
+              {/* 40% */}
+              <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorWithAlpha(color, 0.4) }} />
+              {/* 60% */}
+              <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorWithAlpha(color, 0.6) }} />
+              {/* 80% */}
+              <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorWithAlpha(color, 0.8) }} />
+              {/* 100% */}
+              <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: colorWithAlpha(color, 1.0) }} />
             </div>
             <span>Más</span>
           </div>
