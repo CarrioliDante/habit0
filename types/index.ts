@@ -10,6 +10,7 @@ export type Habit = {
   color?: string; // 🎨 Color hex
   cadence: Cadence;
   targetPerDay: number;
+  allowMultiplePerDay?: boolean; // Si permite múltiples check-ins por día
   isArchived?: boolean; // Indica si el hábito está archivado (soft delete)
 };
 
@@ -29,6 +30,7 @@ export type CreateHabitRequest = {
   color?: string; // 🎨 Nuevo
   cadence: Cadence;
   targetPerDay: number;
+  allowMultiplePerDay?: boolean; // 🆕 Permitir múltiples check-ins por día
 };
 
 export type CreateCheckinRequest = {

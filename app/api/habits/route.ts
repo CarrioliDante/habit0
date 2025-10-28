@@ -14,6 +14,7 @@ const Body = z.object({
   color: z.string().max(16).optional().default("#3b82f6"),
   cadence: z.enum(["daily", "weekly", "custom"]),
   targetPerDay: z.number().int().min(1).max(100).default(1),
+  allowMultiplePerDay: z.boolean().optional().default(false),
   reminder: z.boolean().optional(),
   reminderTimeLocal: z.string().max(16).optional(),
   reminderDays: z.string().max(32).optional(),

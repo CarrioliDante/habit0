@@ -15,6 +15,13 @@
       "when": 1761420459297,
       "tag": "0001_milky_orphan",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1761620901493,
+      "tag": "0002_regular_mister_fear",
+      "breakpoints": true
     }
   ]
 }

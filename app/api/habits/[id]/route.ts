@@ -104,6 +104,7 @@ export async function PATCH(
     color: z.string().max(16).optional(),
     cadence: z.enum(["daily", "weekly", "custom"]).optional(),
     targetPerDay: z.number().int().min(1).max(100).optional(),
+    allowMultiplePerDay: z.boolean().optional(),
     reminder: z.boolean().optional(),
     reminderTimeLocal: z.string().max(16).optional().nullable(),
     reminderDays: z.string().max(32).optional().nullable(),

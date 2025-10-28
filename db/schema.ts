@@ -33,6 +33,8 @@ export const habits = pgTable("habits", {
   cadence: varchar("cadence", { length: 64 }).notNull(),
   // Columna targetPerDay: número entero para el objetivo diario, obligatorio, por defecto 1
   targetPerDay: integer("target_per_day").notNull().default(1),
+  // Columna allowMultiplePerDay: booleano para permitir múltiples check-ins por día, por defecto false
+  allowMultiplePerDay: boolean("allow_multiple_per_day").default(false),
   // Columna jokerPolicy: string de hasta 32 caracteres para política de días libres, por defecto "weekly:1"
   jokerPolicy: varchar("joker_policy", { length: 32 }).default("weekly:1"),
   // Columna reminder: booleano para activar/desactivar recordatorios, obligatorio, por defecto false

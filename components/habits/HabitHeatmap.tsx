@@ -9,7 +9,9 @@ interface HabitHeatmapProps {
   to: string; // YYYY-MM-DD
   color?: string; // Color del hábito
   targetPerDay?: number; // Para calcular intensidad
+  allowMultiplePerDay?: boolean; // Si permite múltiples check-ins
   darkMode?: boolean; // Soporte para modo oscuro
+  cadence?: string; // "daily", "weekly", etc.
 }
 
 /**
@@ -20,8 +22,9 @@ export function HabitHeatmap({
   from,
   to,
   color = "#3b82f6",
-  targetPerDay = 1,
-  darkMode = false
+  allowMultiplePerDay = false,
+  darkMode = false,
+  // cadence = "daily" // TODO: Usar para layout horizontal en vista semanal
 }: HabitHeatmapProps) {
   // Generar todas las fechas del rango
   const dates = useMemo(() => {
@@ -66,15 +69,19 @@ export function HabitHeatmap({
   }, [dates]);
 
   /**
-   * Calcular intensidad del color según check-ins vs target
+   * Calcular intensidad del color según check-ins
+   * Escala de 0 a 4 basada en múltiples completaciones
+   * Si el hábito NO permite múltiples por día, 1+ check-in = intensidad máxima
    */
   const getIntensity = (count: number): number => {
     if (count === 0) return 0;
-    const ratio = count / targetPerDay;
-    if (ratio >= 1) return 4; // 100%+
-    if (ratio >= 0.75) return 3; // 75-99%
-    if (ratio >= 0.5) return 2; // 50-74%
-    return 1; // 1-49%
+    // Si el hábito solo permite uno por día, brillo máximo al completar
+    if (!allowMultiplePerDay && count >= 1) return 4;
+    // Para hábitos con múltiples por día, escala gradual
+    if (count === 1) return 1;
+    if (count === 2) return 2;
+    if (count === 3) return 3;
+    return 4; // 4 o más
   };
 
   /**
@@ -99,8 +106,11 @@ export function HabitHeatmap({
       };
     }
 
-    // Con check-ins - usar el color del hábito con opacidad
-    const opacityValue = [0, 0.3, 0.5, 0.7, 1][intensity];
+    // Con check-ins - usar el color del hábito con opacidad progresiva
+    // Opacidades más diferenciadas para mejor visibilidad
+    const opacityLevels = [0, 0.25, 0.5, 0.75, 1.0];
+    const opacityValue = opacityLevels[intensity];
+
     return {
       backgroundColor: color,
       opacity: opacityValue,
@@ -120,10 +130,10 @@ export function HabitHeatmap({
     <div className="w-full overflow-x-auto">
       <div className="inline-block min-w-full">
         {/* Grid de días */}
-        <div className="flex gap-0.5">
+        <div className="flex gap-1">
           {/* Columna: cada semana */}
           {weeks.map((week, weekIndex) => (
-            <div key={weekIndex} className="flex flex-col gap-0.5">
+            <div key={weekIndex} className="flex flex-col gap-1">
               {/* Fila: cada día de la semana */}
               {week.map((date, dayIndex) => {
                 const dateStr = format(date, "yyyy-MM-dd");
@@ -134,7 +144,7 @@ export function HabitHeatmap({
                   <div
                     key={dayIndex}
                     className={`
-                      w-2.5 h-2.5 rounded-sm cursor-pointer transition-all hover:ring-1 hover:ring-offset-1
+                      w-3 h-3 rounded-sm cursor-pointer transition-all hover:ring-1 hover:ring-offset-1
                       ${bgStyle.className}
                       ${darkMode ? "hover:ring-gray-400" : "hover:ring-blue-500"}
                     `}
@@ -155,14 +165,14 @@ export function HabitHeatmap({
           darkMode ? "text-gray-400" : "text-gray-600"
         }`}>
           <span>Menos</span>
-          <div className="flex gap-0.5">
-            <div className={`w-2.5 h-2.5 rounded-sm ${
+          <div className="flex gap-1">
+            <div className={`w-3 h-3 rounded-sm ${
               darkMode ? "bg-gray-700" : "bg-gray-200"
             }`} />
-            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: color, opacity: 0.3 }} />
-            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: color, opacity: 0.5 }} />
-            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: color, opacity: 0.7 }} />
-            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: color, opacity: 1 }} />
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: color, opacity: 0.25 }} />
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: color, opacity: 0.5 }} />
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: color, opacity: 0.75 }} />
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: color, opacity: 1.0 }} />
           </div>
           <span>Más</span>
         </div>

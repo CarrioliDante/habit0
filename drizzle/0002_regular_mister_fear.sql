@@ -1,0 +1,1 @@
+ALTER TABLE "habits" ADD COLUMN "allow_multiple_per_day" boolean DEFAULT false;

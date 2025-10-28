@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { habitId, count, note } = parsed.data;
+  const { habitId, note } = parsed.data;
 
   // Calcular la fecha en la zona horaria del usuario
   // Si no se proporciona fecha, usar "hoy" en su TZ
@@ -70,24 +70,46 @@ export async function POST(req: Request) {
   }
 
   // Insertar el check-in en la base de datos
-  // Si ya existe un check-in para esa fecha, actualizar el contador
-  const [inserted] = await db
-    .insert(checkins)
-    .values({
-      habitId,
-      userId: me.id,
-      date,
-      count,
-      note,
-    })
-    .onConflictDoUpdate({
-      target: [checkins.habitId, checkins.userId, checkins.date],
-      set: { count: count, note },
-    })
-    .returning();
+  // Si ya existe un check-in para esa fecha y el hábito permite múltiples, incrementar
+  const existingCheckin = await db.query.checkins.findFirst({
+    where: and(
+      eq(checkins.habitId, habitId),
+      eq(checkins.userId, me.id),
+      eq(checkins.date, date)
+    ),
+  });
+
+  let inserted;
+
+  if (existingCheckin && habit.allowMultiplePerDay) {
+    // Si existe y permite múltiples, incrementar el contador
+    [inserted] = await db
+      .update(checkins)
+      .set({
+        count: (existingCheckin.count || 1) + 1,
+        note: note || existingCheckin.note
+      })
+      .where(eq(checkins.id, existingCheckin.id))
+      .returning();
+  } else if (existingCheckin) {
+    // Si existe pero no permite múltiples, no hacer nada (retornar el existente)
+    inserted = existingCheckin;
+  } else {
+    // Si no existe, crear uno nuevo
+    [inserted] = await db
+      .insert(checkins)
+      .values({
+        habitId,
+        userId: me.id,
+        date,
+        count: 1,
+        note,
+      })
+      .returning();
+  }
 
   // Retornar el ID del check-in creado/actualizado
-  return Response.json({ id: inserted.id });
+  return Response.json({ id: inserted.id, count: inserted.count });
 }
 
 /**
