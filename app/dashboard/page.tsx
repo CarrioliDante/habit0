@@ -40,8 +40,8 @@ export default function Dashboard() {
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [showArchived, setShowArchived] = useState(false);
 
-  // Estado para filtros de tiempo
-  const [timeRange, setTimeRange] = useState<TimeRange>("week");
+  // Estado para filtros de tiempo (por defecto: año)
+  const [timeRange, setTimeRange] = useState<TimeRange>("year");
   // const [customFrom, setCustomFrom] = useState("");
   // const [customTo, setCustomTo] = useState("");
 
@@ -108,8 +108,8 @@ export default function Dashboard() {
   // }, [showComparison, dateRange]);
 
   // Cargar check-ins de hábitos activos (OPTIMIZADO: una sola llamada en paralelo)
-  const loadHabitCheckins = useCallback(async () => {
-    const activeHabits = habits.filter((h) => !h.isArchived);
+  const loadHabitCheckins = useCallback(async (habitsToLoad: Habit[]) => {
+    const activeHabits = habitsToLoad.filter((h) => !h.isArchived);
 
     if (activeHabits.length === 0) {
       setHabitCheckins({});
@@ -141,21 +141,21 @@ export default function Dashboard() {
     } catch (e) {
       console.error("Error loading checkins:", e);
     }
-  }, [habits, dateRange.from, dateRange.to]);
-
-  // Effects
+  }, [dateRange.from, dateRange.to]);  // Effects
   useEffect(() => {
     loadHabits();
   }, [loadHabits]);
 
-  // Cargar métricas y checkins solo cuando cambia el rango de fechas
+  // Cargar métricas y checkins solo cuando cambia el rango de fechas O la cantidad de hábitos
+  // Usamos habits.length en lugar de habits para evitar recargas al editar
   useEffect(() => {
     if (habits.length === 0) return;
 
     // Ejecutar ambas llamadas en paralelo
     loadMetrics();
-    loadHabitCheckins();
-  }, [dateRange.from, dateRange.to, habits.length, loadMetrics, loadHabitCheckins]);
+    loadHabitCheckins(habits);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRange.from, dateRange.to, habits.length]);
 
   // Filtrar hábitos
   const activeHabits = useMemo(() => habits.filter((h) => !h.isArchived), [habits]);
@@ -245,8 +245,14 @@ export default function Dashboard() {
   // Handler para editar desde el modal (in-place)
   const handleEditFromModal = async (habit: Habit) => {
     try {
-      setLoading(true);
       setErr(null);
+
+      // Actualizar optimísticamente en el estado local (sin recargar)
+      setHabits((prevHabits) =>
+        prevHabits.map((h) => (h.id === habit.id ? habit : h))
+      );
+
+      // Hacer la actualización en background
       await updateHabit(habit.id, {
         title: habit.title,
         description: habit.description || undefined,
@@ -256,17 +262,18 @@ export default function Dashboard() {
         color: habit.color,
         allowMultiplePerDay: habit.allowMultiplePerDay,
       });
-      await loadHabits();
-      // Recargar los check-ins para reflejar cambios (como color)
-      await loadHabitCheckins();
+
+      // NO llamar loadHabits() ni loadHabitCheckins() - ya actualizamos el estado localmente
+      // Solo recargar si hubo un error (catch block)
     } catch (e: unknown) {
+      // Si falla, recargar desde el servidor para revertir
+      await loadHabits();
+
       if (e instanceof Error) {
         setErr(e.message);
       } else {
         setErr("Error al actualizar el hábito");
       }
-    } finally {
-      setLoading(false);
     }
   };
 

@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import {
   eachDayOfInterval,
   format,
@@ -40,6 +40,7 @@ export function HabitHeatmap({
   isInModal = false,
 }: HabitHeatmapProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Helper: convertir HEX a RGB
   const hexToRgb = (hex: string) => {
@@ -195,6 +196,33 @@ export function HabitHeatmap({
     return labels;
   }, [displayWeeks]);
 
+  // Auto-scroll al final (mes más reciente) cuando NO está en modal y es vista anual
+  useEffect(() => {
+    if (isInModal || viewMode !== 'year') return;
+
+    const scrollToEnd = () => {
+      if (scrollContainerRef.current) {
+        const container = scrollContainerRef.current;
+        const maxScroll = container.scrollWidth - container.clientWidth;
+        if (maxScroll > 0) {
+          container.scrollLeft = maxScroll;
+        }
+      }
+    };
+
+    // Ejecutar con reintentos para asegurar que el contenido está renderizado
+    scrollToEnd();
+    const timeout1 = setTimeout(scrollToEnd, 0);
+    const timeout2 = setTimeout(scrollToEnd, 100);
+    const timeout3 = setTimeout(scrollToEnd, 200);
+
+    return () => {
+      clearTimeout(timeout1);
+      clearTimeout(timeout2);
+      clearTimeout(timeout3);
+    };
+  }, [viewMode, isInModal, displayWeeks.length]); // Re-scroll cuando cambie el contenido
+
   /**
    * Calcular intensidad del color según check-ins
    * Escala de 0 a 4 basada en múltiples completaciones
@@ -323,7 +351,10 @@ export function HabitHeatmap({
       )}
 
       {/* Contenedor con scroll horizontal suave */}
-      <div className={`${!isInModal ? 'overflow-x-auto pb-1' : ''}`}>
+      <div
+        ref={scrollContainerRef}
+        className={`${!isInModal ? 'overflow-x-auto pb-1' : ''}`}
+      >
         <div className={`inline-block min-w-max ${isInModal ? 'pr-8' : ''}`}>
           {/* Labels de meses en el eje superior - solo en vista month/year si hay múltiples meses */}
         {(viewMode === 'month' || viewMode === 'year') && monthLabels.length > 1 && (
