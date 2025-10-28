@@ -11,7 +11,7 @@ const Body = z.object({
   title: z.string().min(1, "El título es requerido").max(256, "Título muy largo"),
   description: z.string().max(2000, "Descripción muy larga").optional(),
   icon: z.string().max(32).optional().default("⭐"),
-  color: z.string().max(16).optional().default("#3b82f6"),
+  color: z.string().max(16).optional().default("#BAE1FF"), // Pastel Blue
   cadence: z.enum(["daily", "weekly", "custom"]),
   targetPerDay: z.number().int().min(1).max(100).default(1),
   allowMultiplePerDay: z.boolean().optional().default(false),

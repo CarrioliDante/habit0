@@ -1,24 +1,35 @@
 "use client";
 import { useState } from "react";
 
-// Paleta de colores para hábitos
+// Paleta de colores moderna para hábitos - pasteles y vibrantes
 const COLORS = [
-  "#ef4444", // red
-  "#f97316", // orange
-  "#f59e0b", // amber
-  "#eab308", // yellow
-  "#84cc16", // lime
-  "#22c55e", // green
-  "#10b981", // emerald
-  "#14b8a6", // teal
-  "#06b6d4", // cyan
-  "#0ea5e9", // sky
-  "#3b82f6", // blue
-  "#6366f1", // indigo
-  "#8b5cf6", // violet
-  "#a855f7", // purple
-  "#d946ef", // fuchsia
-  "#ec4899", // pink
+  // Fila 1 - Pasteles cálidos
+  "#FFB3BA", // Pastel Pink
+  "#FFDFBA", // Pastel Peach
+  "#FFFFBA", // Pastel Yellow
+  "#BAFFC9", // Pastel Mint
+  "#BAE1FF", // Pastel Blue
+
+  // Fila 2 - Pasteles fríos
+  "#E0BBE4", // Pastel Purple
+  "#FFE5D9", // Pastel Cream
+  "#D4F1F4", // Pastel Cyan
+  "#C9F0DD", // Pastel Green
+  "#FFC8DD", // Pastel Rose
+
+  // Fila 3 - Vibrantes suaves
+  "#FF6B9D", // Hot Pink
+  "#FFA94D", // Orange
+  "#FFD93D", // Yellow
+  "#6BCF7F", // Green
+  "#4ECDC4", // Teal
+
+  // Fila 4 - Elegantes
+  "#A7C7E7", // Periwinkle
+  "#C77DFF", // Purple
+  "#457B9D", // Navy
+  "#E63946", // Crimson
+  "#06D6A0", // Caribbean Green
 ];
 
 interface ColorPickerProps {
@@ -27,7 +38,7 @@ interface ColorPickerProps {
 }
 
 /**
- * Selector de color para hábitos
+ * Selector de color para hábitos con paleta moderna
  */
 export function ColorPicker({ value, onChange }: ColorPickerProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -38,7 +49,7 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-12 h-12 border-2 border-gray-300 rounded-lg hover:border-blue-500 transition-colors flex items-center justify-center overflow-hidden"
+        className="w-14 h-14 border-2 border-gray-300 dark:border-gray-600 rounded-xl hover:border-blue-500 dark:hover:border-blue-400 transition-all hover:scale-105 shadow-sm"
         style={{ backgroundColor: value }}
       >
         <span className="sr-only">Seleccionar color</span>
@@ -54,8 +65,11 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
           />
 
           {/* Paleta de colores */}
-          <div className="absolute top-14 left-0 z-20 bg-white border rounded-lg shadow-lg p-2 w-48">
-            <div className="grid grid-cols-4 gap-2">
+          <div className="absolute top-16 left-0 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl p-3 w-60">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-medium">
+              Elegí un color
+            </p>
+            <div className="grid grid-cols-5 gap-2">
               {COLORS.map((color) => (
                 <button
                   key={color}
@@ -65,10 +79,11 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
                     setIsOpen(false);
                   }}
                   className={`
-                    w-10 h-10 rounded-lg transition-transform hover:scale-110
-                    ${value === color ? "ring-2 ring-offset-2 ring-blue-500" : ""}
+                    w-10 h-10 rounded-lg transition-all hover:scale-110 shadow-sm
+                    ${value === color ? "ring-2 ring-offset-2 dark:ring-offset-gray-800 ring-blue-500 scale-110" : "hover:shadow-md"}
                   `}
                   style={{ backgroundColor: color }}
+                  title={color}
                 >
                   <span className="sr-only">{color}</span>
                 </button>

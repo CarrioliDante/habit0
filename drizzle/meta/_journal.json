@@ -22,6 +22,13 @@
       "when": 1761620901493,
       "tag": "0002_regular_mister_fear",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1761676378556,
+      "tag": "0003_deep_vindicator",
+      "breakpoints": true
     }
   ]
 }

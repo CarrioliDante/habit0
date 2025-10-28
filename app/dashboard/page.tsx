@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Habit, Metrics, Cadence, TimeRange } from "@/types";
 import {
   getHabits,
@@ -27,10 +27,13 @@ export default function Dashboard() {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [habitCheckins, setHabitCheckins] = useState<Record<number, Record<string, number>>>({});
 
-  // Estado para métricas
+  // Estado para métricas y UI
   const [metrics, setMetrics] = useState<Metrics | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+
+  // Timer para debounce de métricas
+  const metricsTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Estado para modales
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -38,7 +41,7 @@ export default function Dashboard() {
   const [showArchived, setShowArchived] = useState(false);
 
   // Estado para filtros de tiempo
-  const [timeRange, setTimeRange] = useState<TimeRange>("30days");
+  const [timeRange, setTimeRange] = useState<TimeRange>("week");
   // const [customFrom, setCustomFrom] = useState("");
   // const [customTo, setCustomTo] = useState("");
 
@@ -56,20 +59,16 @@ export default function Dashboard() {
     return getDateRange(timeRange, "", "");
   }, [timeRange]);
 
-  // Cargar hábitos
+    // Cargar hábitos
   const loadHabits = useCallback(async () => {
-    setLoading(true);
-    setErr(null);
     try {
       const data = await getHabits();
       setHabits(data);
+      setLoading(false);
     } catch (e: unknown) {
       if (e instanceof Error) {
         setErr(e.message);
-      } else {
-        setErr("Error al cargar hábitos");
       }
-    } finally {
       setLoading(false);
     }
   }, []);
@@ -85,7 +84,7 @@ export default function Dashboard() {
     } catch (e: unknown) {
       console.error("Error loading metrics:", e);
     }
-  }, [dateRange]);
+  }, [dateRange.from, dateRange.to]); // Solo deps necesarias
 
   // // Cargar comparación
   // const loadComparison = useCallback(async () => {
@@ -108,47 +107,55 @@ export default function Dashboard() {
   //   }
   // }, [showComparison, dateRange]);
 
-  // Cargar check-ins de hábitos activos
+  // Cargar check-ins de hábitos activos (OPTIMIZADO: una sola llamada en paralelo)
   const loadHabitCheckins = useCallback(async () => {
     const activeHabits = habits.filter((h) => !h.isArchived);
-    const checkinsByHabit: Record<number, Record<string, number>> = {};
 
-    for (const habit of activeHabits) {
-      try {
-        const response = await getCheckins({
+    if (activeHabits.length === 0) {
+      setHabitCheckins({});
+      return;
+    }
+
+    try {
+      // Hacer todas las llamadas en paralelo en lugar de secuencial
+      const promises = activeHabits.map((habit) =>
+        getCheckins({
           from: dateRange.from,
           to: dateRange.to,
           habitId: habit.id,
-        });
+        }).then((response) => ({ habitId: habit.id, data: response.data }))
+        .catch((e) => {
+          console.error(`Error loading checkins for habit ${habit.id}:`, e);
+          return { habitId: habit.id, data: {} };
+        })
+      );
 
-        // La respuesta tiene formato { from, to, data: Record<date, count> }
-        checkinsByHabit[habit.id] = response.data;
-      } catch (e) {
-        console.error(`Error loading checkins for habit ${habit.id}:`, e);
-      }
+      const results = await Promise.all(promises);
+
+      const checkinsByHabit: Record<number, Record<string, number>> = {};
+      results.forEach(({ habitId, data }) => {
+        checkinsByHabit[habitId] = data;
+      });
+
+      setHabitCheckins(checkinsByHabit);
+    } catch (e) {
+      console.error("Error loading checkins:", e);
     }
-
-    setHabitCheckins(checkinsByHabit);
-  }, [habits, dateRange]);
+  }, [habits, dateRange.from, dateRange.to]);
 
   // Effects
   useEffect(() => {
     loadHabits();
   }, [loadHabits]);
 
+  // Cargar métricas y checkins solo cuando cambia el rango de fechas
   useEffect(() => {
+    if (habits.length === 0) return;
+
+    // Ejecutar ambas llamadas en paralelo
     loadMetrics();
-  }, [loadMetrics]);
-
-  // useEffect(() => {
-  //   loadComparison();
-  // }, [loadComparison]);
-
-  useEffect(() => {
-    if (habits.length > 0) {
-      loadHabitCheckins();
-    }
-  }, [habits, dateRange.from, dateRange.to, loadHabitCheckins]);
+    loadHabitCheckins();
+  }, [dateRange.from, dateRange.to, habits.length, loadMetrics, loadHabitCheckins]);
 
   // Filtrar hábitos
   const activeHabits = useMemo(() => habits.filter((h) => !h.isArchived), [habits]);
@@ -235,6 +242,34 @@ export default function Dashboard() {
     }
   };
 
+  // Handler para editar desde el modal (in-place)
+  const handleEditFromModal = async (habit: Habit) => {
+    try {
+      setLoading(true);
+      setErr(null);
+      await updateHabit(habit.id, {
+        title: habit.title,
+        description: habit.description || undefined,
+        cadence: habit.cadence,
+        targetPerDay: habit.targetPerDay,
+        icon: habit.icon,
+        color: habit.color,
+        allowMultiplePerDay: habit.allowMultiplePerDay,
+      });
+      await loadHabits();
+      // Recargar los check-ins para reflejar cambios (como color)
+      await loadHabitCheckins();
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        setErr(e.message);
+      } else {
+        setErr("Error al actualizar el hábito");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCheckin = async (habitId: number) => {
     try {
       setLoading(true);
@@ -269,6 +304,48 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Nueva función para batch updates (mucho más rápido para múltiples cambios)
+  const handleBatchUpdateCheckins = async (habitId: number, updates: Array<{ date: string; count: number }>) => {
+    // Actualizar localmente de forma optimista
+    setHabitCheckins((prev) => {
+      const newCheckins = { ...prev[habitId] };
+      updates.forEach(({ date, count }) => {
+        newCheckins[date] = count;
+      });
+      return {
+        ...prev,
+        [habitId]: newCheckins,
+      };
+    });
+
+    // Persistir todos en una sola llamada en background
+    fetch("/api/checkins", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ habitId, updates }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          response.json().then((errorData) => {
+            console.error("Batch API Error:", response.status, errorData);
+          });
+        }
+      })
+      .catch((e) => {
+        console.error("Error in handleBatchUpdateCheckins:", e);
+        // Solo recargar si falla
+        loadHabits();
+      });
+
+    // Debounce: recargar métricas solo después de 1.5s sin cambios
+    if (metricsTimerRef.current) {
+      clearTimeout(metricsTimerRef.current);
+    }
+    metricsTimerRef.current = setTimeout(() => {
+      loadMetrics();
+    }, 1500);
   };
 
   const handleDelete = async (habitId: number, hard: boolean) => {
@@ -337,11 +414,19 @@ export default function Dashboard() {
   // };
 
   return (
-    <div className={`min-h-screen transition-colors ${darkMode ? "bg-gray-900" : "bg-gray-50"}`}>
+    <div className={`min-h-screen transition-colors ${
+      darkMode
+        ? "bg-gradient-to-br from-gray-900 via-slate-900 to-gray-900"
+        : "bg-gradient-to-br from-white via-gray-50 to-white"
+    }`}>
       {/* Header minimalista */}
-      <div className={`border-b ${darkMode ? "border-gray-800 bg-black" : "border-gray-200 bg-white"}`}>
+      <div className={`border-b backdrop-blur-sm ${
+        darkMode
+          ? "border-gray-800 bg-black/50"
+          : "border-gray-200 bg-white/80"
+      }`}>
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className={`text-xl font-bold ${darkMode ? "text-white" : "text-gray-900"}`}>
+          <h1 className={`text-xl font-bold ${darkMode ? "text-gray-50" : "text-gray-900"}`}>
             Habit0
           </h1>
 
@@ -375,7 +460,7 @@ export default function Dashboard() {
         {activeHabits.length > 0 && (
           <div className="mb-6 flex flex-wrap items-center gap-2">
             {/* Time range pills */}
-            {(["today", "week", "month", "30days", "90days", "year"] as TimeRange[]).map((range) => (
+            {(["week", "month", "year"] as TimeRange[]).map((range) => (
               <button
                 key={range}
                 onClick={() => setTimeRange(range)}
@@ -448,7 +533,15 @@ export default function Dashboard() {
         )}
 
         {/* Lista de hábitos o mensaje vacío */}
-        {activeHabits.length === 0 ? (
+        {/* Loading state inicial */}
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent mb-4"></div>
+            <p className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+              Cargando hábitos...
+            </p>
+          </div>
+        ) : activeHabits.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
             <div
               className={`text-6xl mb-4 ${
@@ -487,9 +580,10 @@ export default function Dashboard() {
             dateRange={dateRange}
             darkMode={darkMode}
             onCheckin={handleCheckin}
-            onEdit={setEditingHabit}
+            onEdit={handleEditFromModal}
             onArchive={(id) => handleDelete(id, false)}
             onDelete={(id) => handleDelete(id, true)}
+            onBatchUpdateCheckins={handleBatchUpdateCheckins}
             loading={loading}
             emptyMessage={
               filterCadence !== "all"

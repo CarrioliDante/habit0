@@ -12,6 +12,7 @@ interface HabitListProps {
   onEdit: (habit: Habit) => void;
   onArchive: (habitId: number) => void;
   onDelete: (habitId: number) => void;
+  onBatchUpdateCheckins: (habitId: number, updates: Array<{ date: string; count: number }>) => void;
   loading: boolean;
   emptyMessage?: string;
 }
@@ -29,6 +30,7 @@ export function HabitList({
   onEdit,
   onArchive,
   onDelete,
+  onBatchUpdateCheckins,
   loading,
   emptyMessage,
 }: HabitListProps) {
@@ -60,6 +62,7 @@ export function HabitList({
           onEdit={onEdit}
           onArchive={onArchive}
           onDelete={onDelete}
+          onBatchUpdateCheckins={onBatchUpdateCheckins}
           loading={loading}
         />
       ))}

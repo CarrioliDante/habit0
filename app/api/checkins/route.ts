@@ -174,3 +174,194 @@ export async function GET(req: Request) {
   // Retornar el rango de fechas y los datos acumulados
   return Response.json({ from, to, data: counts });
 }
+
+/**
+ * PATCH /api/checkins - Actualizar o establecer el contador de un check-in específico
+ * Body: { habitId: number, date: string, count: number }
+ */
+export async function PATCH(req: Request) {
+  // Obtener el userId de la sesión autenticada de Clerk
+  const { userId } = await auth();
+  if (!userId) return new Response("Unauthorized", { status: 401 });
+
+  // Obtener el usuario interno de la base de datos
+  const me = await getOrCreateInternalUser(userId);
+
+  // Parsear y validar el cuerpo de la petición
+  const body = await req.json();
+  const schema = z.object({
+    habitId: z.number().int(),
+    date: z.string(), // Fecha en formato YYYY-MM-DD
+    count: z.number().int().min(0), // Puede ser 0 para eliminar
+  });
+
+  const parsed = schema.safeParse(body);
+
+  if (!parsed.success) {
+    return Response.json(
+      { error: "Invalid input", details: parsed.error.format() },
+      { status: 400 }
+    );
+  }
+
+  const { habitId, date, count } = parsed.data;
+
+  // Verificar que el hábito existe y pertenece al usuario
+  const habit = await db.query.habits.findFirst({
+    where: eq(habits.id, habitId),
+  });
+
+  if (!habit) {
+    return new Response("Habit not found", { status: 404 });
+  }
+
+  if (habit.userId !== me.id) {
+    return new Response("Forbidden: habit does not belong to user", {
+      status: 403,
+    });
+  }
+
+  // Buscar check-in existente
+  const existingCheckin = await db.query.checkins.findFirst({
+    where: and(
+      eq(checkins.habitId, habitId),
+      eq(checkins.userId, me.id),
+      eq(checkins.date, date)
+    ),
+  });
+
+  let result;
+
+  if (count === 0) {
+    // Si count es 0, eliminar el check-in si existe
+    if (existingCheckin) {
+      await db
+        .delete(checkins)
+        .where(eq(checkins.id, existingCheckin.id));
+      result = { deleted: true };
+    } else {
+      result = { message: "No check-in to delete" };
+    }
+  } else if (existingCheckin) {
+    // Si existe, actualizar el contador
+    [result] = await db
+      .update(checkins)
+      .set({ count })
+      .where(eq(checkins.id, existingCheckin.id))
+      .returning();
+  } else {
+    // Si no existe, crear uno nuevo
+    [result] = await db
+      .insert(checkins)
+      .values({
+        habitId,
+        userId: me.id,
+        date,
+        count,
+      })
+      .returning();
+  }
+
+  return Response.json({ success: true, result });
+}
+
+/**
+ * PUT /api/checkins - Actualizar múltiples check-ins en batch (optimizado)
+ * Body: { habitId: number, updates: Array<{ date: string, count: number }> }
+ */
+export async function PUT(req: Request) {
+  // Obtener el userId de la sesión autenticada de Clerk
+  const { userId } = await auth();
+  if (!userId) return new Response("Unauthorized", { status: 401 });
+
+  // Obtener el usuario interno de la base de datos
+  const me = await getOrCreateInternalUser(userId);
+
+  // Parsear y validar el cuerpo de la petición
+  const body = await req.json();
+  const schema = z.object({
+    habitId: z.number().int(),
+    updates: z.array(z.object({
+      date: z.string(), // Fecha en formato YYYY-MM-DD
+      count: z.number().int().min(0), // Puede ser 0 para eliminar
+    })),
+  });
+
+  const parsed = schema.safeParse(body);
+
+  if (!parsed.success) {
+    return Response.json(
+      { error: "Invalid input", details: parsed.error.format() },
+      { status: 400 }
+    );
+  }
+
+  const { habitId, updates } = parsed.data;
+
+  // Verificar que el hábito existe y pertenece al usuario
+  const habit = await db.query.habits.findFirst({
+    where: eq(habits.id, habitId),
+  });
+
+  if (!habit) {
+    return new Response("Habit not found", { status: 404 });
+  }
+
+  if (habit.userId !== me.id) {
+    return new Response("Forbidden: habit does not belong to user", {
+      status: 403,
+    });
+  }
+
+  // Procesar todos los updates
+  const results = [];
+
+  for (const update of updates) {
+    const { date, count } = update;
+
+    // Buscar check-in existente
+    const existingCheckin = await db.query.checkins.findFirst({
+      where: and(
+        eq(checkins.habitId, habitId),
+        eq(checkins.userId, me.id),
+        eq(checkins.date, date)
+      ),
+    });
+
+    let result;
+
+    if (count === 0) {
+      // Si count es 0, eliminar el check-in si existe
+      if (existingCheckin) {
+        await db
+          .delete(checkins)
+          .where(eq(checkins.id, existingCheckin.id));
+        result = { date, deleted: true };
+      } else {
+        result = { date, message: "No check-in to delete" };
+      }
+    } else if (existingCheckin) {
+      // Si existe, actualizar el contador
+      [result] = await db
+        .update(checkins)
+        .set({ count })
+        .where(eq(checkins.id, existingCheckin.id))
+        .returning();
+    } else {
+      // Si no existe, crear uno nuevo
+      [result] = await db
+        .insert(checkins)
+        .values({
+          habitId,
+          userId: me.id,
+          date,
+          count,
+        })
+        .returning();
+    }
+
+    results.push(result);
+  }
+
+  return Response.json({ success: true, count: results.length, results });
+}

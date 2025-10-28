@@ -1,0 +1,1 @@
+CREATE INDEX "idx_checkins_habit" ON "checkins" USING btree ("habit_id");

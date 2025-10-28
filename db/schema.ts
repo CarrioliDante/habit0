@@ -74,5 +74,7 @@ export const checkins = pgTable("checkins", {
   unique("unique_checkin_per_day").on(table.habitId, table.userId, table.date),
   // Definir índice para mejorar el rendimiento de búsqueda por usuario y fecha
   index("idx_checkins_user_date").on(table.userId, table.date),
+  // Índice adicional para búsquedas por habitId (usado frecuentemente)
+  index("idx_checkins_habit").on(table.habitId),
 ]);
 

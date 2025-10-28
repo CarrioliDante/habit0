@@ -37,7 +37,7 @@ export function HabitForm({
   const [description, setDescription] = useState(habit?.description || "");
   const [cadence, setCadence] = useState<Cadence>(habit?.cadence || "daily");
   const [icon, setIcon] = useState(habit?.icon || "⭐");
-  const [color, setColor] = useState(habit?.color || "#3b82f6");
+  const [color, setColor] = useState(habit?.color || "#BAE1FF"); // Pastel Blue por defecto
   const [allowMultiplePerDay, setAllowMultiplePerDay] = useState(habit?.allowMultiplePerDay || false);
 
   const handleSubmit = async () => {
