@@ -287,38 +287,97 @@ export default function Dashboard() {
   };
 
   const handleCheckin = async (habitId: number) => {
-    try {
-      setLoading(true);
-      setErr(null);
+    // Buscar el hábito para saber los límites
+    const habit = habits.find(h => h.id === habitId);
+    if (!habit) return;
 
-      // Crear el check-in
-      await createCheckin({ habitId });
+    // Usar fecha local (no UTC)
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 
-      // Recargar check-ins del hábito específico ANTES de loadHabits
-      const response = await getCheckins({
-        from: dateRange.from,
-        to: dateRange.to,
-        habitId,
-      });
+    // Leer el estado actual para decidir acción
+    const currentCount = (habitCheckins[habitId] || {})[todayStr] || 0;
 
-      // Actualizar inmediatamente el state
+    // Si permite múltiples por día
+    if (habit.allowMultiplePerDay) {
+      const maxCount = habit.targetPerDay || 1;
+
+      if (currentCount < maxCount) {
+        // Incrementar optimísticamente
+        setHabitCheckins((prev) => {
+          const prevCheckins = prev[habitId] || {};
+          const newCount = (prevCheckins[todayStr] || 0) + 1;
+          return {
+            ...prev,
+            [habitId]: {
+              ...prevCheckins,
+              [todayStr]: newCount,
+            },
+          };
+        });
+
+        // Persistir incremento
+        try {
+          await createCheckin({ habitId });
+          await loadMetrics();
+        } catch (e: unknown) {
+          console.error("Error in handleCheckin (increment):", e);
+          setErr(e instanceof Error ? e.message : "Error al registrar check-in");
+        }
+      } else {
+        // currentCount >= maxCount -> reset to 0 (both local and server)
+        setHabitCheckins((prev) => {
+          const prevCheckins = prev[habitId] || {};
+          return {
+            ...prev,
+            [habitId]: {
+              ...prevCheckins,
+              [todayStr]: 0,
+            },
+          };
+        });
+
+        // Persistir reset (usar endpoint PUT similar a batch update)
+        try {
+          await fetch("/api/checkins", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ habitId, updates: [{ date: todayStr, count: 0 }] }),
+          });
+          await loadMetrics();
+        } catch (e: unknown) {
+          console.error("Error in handleCheckin (reset):", e);
+          setErr(e instanceof Error ? e.message : "Error al resetear check-in");
+        }
+      }
+    } else {
+      // No permite múltiples: alternar 0/1
+      const newVal = currentCount > 0 ? 0 : 1;
       setHabitCheckins((prev) => ({
         ...prev,
-        [habitId]: response.data
+        [habitId]: {
+          ...(prev[habitId] || {}),
+          [todayStr]: newVal,
+        },
       }));
 
-      // Recargar métricas (sin recargar hábitos para no trigger loadHabitCheckins)
-      await loadMetrics();
-
-    } catch (e: unknown) {
-      console.error("Error in handleCheckin:", e);
-      if (e instanceof Error) {
-        setErr(e.message);
-      } else {
-        setErr("Error al registrar check-in");
+      try {
+        // For single toggle, still use createCheckin to mark; if toggling off, send PUT reset
+        if (newVal === 1) {
+          await createCheckin({ habitId });
+        } else {
+          await fetch("/api/checkins", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ habitId, updates: [{ date: todayStr, count: 0 }] }),
+          });
+        }
+        await loadMetrics();
+      } catch (e: unknown) {
+        console.error("Error in handleCheckin (toggle):", e);
+        setErr(e instanceof Error ? e.message : "Error al registrar check-in");
       }
-    } finally {
-      setLoading(false);
     }
   };
 

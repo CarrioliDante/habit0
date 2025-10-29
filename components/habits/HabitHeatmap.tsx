@@ -284,8 +284,11 @@ export function HabitHeatmap({
     if (!allowMultiplePerDay && count >= 1) return 5;
 
     // Para hábitos múltiples: calcular intensidad basada en la meta
-    const target = targetPerDay || 1;
-    const progress = count / target; // 0.0 a 1.0+ (puede ser mayor a 1)
+      // Importante: limitar el target efectivo a 5 para evitar que metas muy altas (ej. 100)
+      // diluyan la opacidad. A partir de 5, no se incrementa más el color.
+      const rawTarget = targetPerDay || 1;
+      const target = Math.max(1, Math.min(5, rawTarget)); // efectivo entre 1 y 5
+      const progress = count / target; // 0.0 a 1.0+ (puede ser mayor a 1)
 
     // Mapear progreso a intensidad 1-5 (5 niveles)
     // 0% = 0, 1-20% = 1, 21-40% = 2, 41-60% = 3, 61-80% = 4, 81%+ = 5
@@ -311,23 +314,15 @@ export function HabitHeatmap({
       intensity = getIntensity(count);
     }
 
-    // Fuera del rango del hábito (pero dentro de los 12 meses mostrados)
-    if (date < parseISO(from) || date > parseISO(to)) {
+    // Sin check-ins - mostrar versión suave del color del hábito
+    if (intensity === 0) {
+      // Usar versión muy suave del color del hábito como base
+      const base = colorWithAlpha(color || '#BAE1FF', darkMode ? 0.06 : 0.08);
       return {
-        backgroundColor: darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(229, 231, 235, 0.5)', // Gris muy suave
-        className: ""
+        backgroundColor: base,
+        className: "",
       };
     }
-
-    // Sin check-ins (dentro del rango del hábito)
-      if (intensity === 0) {
-        // Usar versión muy suave del color del hábito como base
-        const base = colorWithAlpha(color || '#BAE1FF', darkMode ? 0.06 : 0.08);
-        return {
-          backgroundColor: base,
-          className: "",
-        };
-      }
 
     // Con check-ins - usar el color del hábito con opacidad progresiva
     // 6 niveles de opacidad: 0 (vacío), 1 (20%), 2 (40%), 3 (60%), 4 (80%), 5 (100%)
@@ -490,9 +485,6 @@ export function HabitHeatmap({
                   const count = data[dateStr] || 0;
                   const bgStyle = getBackgroundColor(date);
 
-                  // Determinar si está fuera del rango de datos del hábito
-                  const isOutOfRange = date < parseISO(from) || date > parseISO(to);
-
                   // Ajustar tamaño según si está en modal y viewMode
                   const size = isInModal
                     ? (viewMode === 'year' ? 'w-4 h-4' : 'w-5 h-5')
@@ -501,13 +493,11 @@ export function HabitHeatmap({
                   return (
                     <div
                       key={dayIndex}
-                      className={`${size} rounded-sm transition-all ${
-                        isOutOfRange
-                          ? '' // Sin hover ni interacción si está fuera del rango del hábito
-                          : 'cursor-pointer hover:ring-2 hover:ring-offset-1'
-                      } ${darkMode ? "hover:ring-gray-300" : "hover:ring-gray-400"}`}
+                      className={`${size} rounded-sm transition-all cursor-pointer hover:ring-2 hover:ring-offset-1 ${
+                        darkMode ? "hover:ring-gray-300" : "hover:ring-gray-400"
+                      }`}
                       style={{ backgroundColor: bgStyle.backgroundColor }}
-                      title={isOutOfRange ? '' : `${format(date, "dd/MM/yyyy", { locale: es })}: ${count} check-in${count !== 1 ? 's' : ''}`}
+                      title={`${format(date, "dd/MM/yyyy", { locale: es })}: ${count} check-in${count !== 1 ? 's' : ''}`}
                     />
                   );
                 })}
