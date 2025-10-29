@@ -5,13 +5,14 @@ import { z } from "zod";
 import { eq, and, sql } from "drizzle-orm";
 import { getOrCreateInternalUser } from "@/lib/user";
 import { NextResponse } from "next/server";
+import { DEFAULT_HABIT_COLOR } from "@/lib/colors";
 
 // Esquema de validación con Zod para crear un hábito
 const Body = z.object({
   title: z.string().min(1, "El título es requerido").max(256, "Título muy largo"),
   description: z.string().max(2000, "Descripción muy larga").optional(),
-  icon: z.string().max(32).optional().default("⭐"),
-  color: z.string().max(16).optional().default("#BAE1FF"), // Pastel Blue
+  icon: z.string().max(32).optional().default("Star"),
+  color: z.string().max(16).optional().default(DEFAULT_HABIT_COLOR),
   cadence: z.enum(["daily", "weekly", "custom"]),
   targetPerDay: z.number().int().min(1).max(100).default(1),
   allowMultiplePerDay: z.boolean().optional().default(false),
@@ -96,6 +97,7 @@ export async function POST(req: Request) {
         color: parsed.data.color,
         cadence: parsed.data.cadence,
         targetPerDay: parsed.data.targetPerDay,
+        allowMultiplePerDay: parsed.data.allowMultiplePerDay,
         reminder: parsed.data.reminder,
         reminderTimeLocal: parsed.data.reminderTimeLocal,
         reminderDays: parsed.data.reminderDays,

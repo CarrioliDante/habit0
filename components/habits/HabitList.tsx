@@ -7,6 +7,7 @@ interface HabitListProps {
   habitCheckins: Record<number, Record<string, number>>;
   habitStreaks: Record<number, number>;
   dateRange: { from: string; to: string };
+  viewMode?: "default" | "month" | "week";
   darkMode: boolean;
   onCheckin: (habitId: number) => void;
   onEdit: (habit: Habit) => void;
@@ -25,6 +26,7 @@ export function HabitList({
   habitCheckins,
   habitStreaks,
   dateRange,
+  viewMode = "default",
   darkMode,
   onCheckin,
   onEdit,
@@ -43,7 +45,7 @@ export function HabitList({
             : "bg-white border-gray-200 text-gray-500"
         }`}
       >
-        {emptyMessage || "Todavía no tenés hábitos — creá el primero 🙂"}
+        {emptyMessage || "Todavía no tenés hábitos — creá el primero"}
       </div>
     );
   }
@@ -57,6 +59,7 @@ export function HabitList({
           checkins={habitCheckins[habit.id] || {}}
           streak={habitStreaks[habit.id] || 0}
           dateRange={dateRange}
+          viewMode={viewMode}
           darkMode={darkMode}
           onCheckin={onCheckin}
           onEdit={onEdit}

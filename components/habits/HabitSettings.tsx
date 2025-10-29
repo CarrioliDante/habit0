@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Habit, Cadence } from "@/types";
+import { DEFAULT_HABIT_COLOR } from "@/lib/colors";
 import { EditableColorPicker } from "./EditableColorPicker";
 
 interface HabitSettingsProps {
@@ -78,7 +79,7 @@ export function HabitSettings({ habit, darkMode, onHabitChange }: HabitSettingsP
 
       {/* Color editable */}
       <EditableColorPicker
-        color={habit.color || "#BAE1FF"}
+        color={habit.color || DEFAULT_HABIT_COLOR}
         darkMode={darkMode}
         onColorChange={handleColorChange}
       />

@@ -3,7 +3,11 @@ import { useState } from "react";
 import type { Cadence, Habit } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { IconPicker } from "@/components/ui/IconPicker";
+import * as LucideIcons from "lucide-react";
+import { normalizeIconValue } from "@/lib/iconUtils";
+import type { ComponentType } from "react";
 import { ColorPicker } from "@/components/ui/ColorPicker";
+import { DEFAULT_HABIT_COLOR } from "@/lib/colors";
 
 interface HabitFormProps {
   habit?: Habit;
@@ -36,8 +40,8 @@ export function HabitForm({
   const [title, setTitle] = useState(habit?.title || "");
   const [description, setDescription] = useState(habit?.description || "");
   const [cadence, setCadence] = useState<Cadence>(habit?.cadence || "daily");
-  const [icon, setIcon] = useState(habit?.icon || "⭐");
-  const [color, setColor] = useState(habit?.color || "#BAE1FF"); // Pastel Blue por defecto
+  const [icon, setIcon] = useState(habit?.icon || "Star");
+  const [color, setColor] = useState(habit?.color || DEFAULT_HABIT_COLOR);
   const [allowMultiplePerDay, setAllowMultiplePerDay] = useState(habit?.allowMultiplePerDay || false);
   const [targetPerDay, setTargetPerDay] = useState(habit?.targetPerDay || 1);
 
@@ -59,8 +63,8 @@ export function HabitForm({
       setTitle("");
       setDescription("");
       setCadence("daily");
-      setIcon("⭐");
-      setColor("#3b82f6");
+      setIcon("Star");
+      setColor(DEFAULT_HABIT_COLOR);
       setAllowMultiplePerDay(false);
       setTargetPerDay(1);
     }
@@ -70,7 +74,7 @@ export function HabitForm({
     <div className="space-y-4">
       {/* Selector de icono y color */}
       <div className="flex gap-4 items-center">
-        <div>
+          <div>
           <label
             className={`block text-sm font-medium mb-2 ${
               darkMode ? "text-gray-300" : "text-gray-700"
@@ -78,12 +82,12 @@ export function HabitForm({
           >
             Icono
           </label>
-          <IconPicker value={icon} onChange={setIcon} />
+          <IconPicker value={icon} onChange={setIcon} darkMode={darkMode} />
         </div>
 
         <div>
           <label
-            className={`block text-sm font-medium mb-2 ${
+            className={`block text-sm  font-medium mb-2 ${
               darkMode ? "text-gray-300" : "text-gray-700"
             }`}
           >
@@ -92,7 +96,7 @@ export function HabitForm({
           <ColorPicker value={color} onChange={setColor} />
         </div>
 
-        {/* Preview */}
+        {/* Preview (icon only) */}
         <div className="flex-1 ml-4">
           <label
             className={`block text-sm font-medium mb-2 ${
@@ -101,12 +105,21 @@ export function HabitForm({
           >
             Vista previa
           </label>
-          <div
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium"
-            style={{ backgroundColor: color }}
-          >
-            <span className="text-2xl">{icon}</span>
-            <span>{title || "Nuevo hábito"}</span>
+          <div className="flex items-center">
+            <div
+              className="w-10 h-10 rounded-lg flex items-center justify-center shadow-sm"
+              style={{ backgroundColor: color }}
+            >
+              {
+                (() => {
+                  const Icons = LucideIcons as unknown as Record<string, unknown>;
+                  const normalized = normalizeIconValue(icon || "");
+                  const Comp = Icons[normalized || "Star"] as unknown as ComponentType<{ size?: number; className?: string }> | undefined;
+                  if (Comp) return <Comp size={20} className="text-white" />;
+                  return <span className="text-white text-xl">{icon}</span>;
+                })()
+              }
+            </div>
           </div>
         </div>
       </div>

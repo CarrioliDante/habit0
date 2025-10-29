@@ -1,6 +1,8 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Habit, Metrics, Cadence, TimeRange } from "@/types";
+import type { ComponentType } from "react";
+import type { Habit, Cadence, TimeRange } from "@/types";
+import { parseISO, subDays, format as formatDate } from "date-fns";
 import {
   getHabits,
   createHabit as apiCreateHabit,
@@ -13,11 +15,41 @@ import {
   // compareAnalytics,
   getCheckins,
 } from "@/lib/api";
-import { getDateRange, getTimeRangeLabel } from "@/lib/dateHelpers";
+import { getDateRange } from "@/lib/dateHelpers";
 import { computeStreak } from "@/lib/metrics";
+import { DEFAULT_HABIT_COLOR } from "@/lib/colors";
 import { Button } from "@/components/ui/Button";
 import { HabitList } from "@/components/habits/HabitList";
 import { HabitForm } from "@/components/habits/HabitForm";
+import * as LucideIcons from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  CalendarCheck,
+  CalendarDays,
+  CalendarRange,
+  ChevronDown,
+  ChevronRight,
+  ClipboardList,
+  ListFilter,
+  Moon,
+  Sun,
+  SunMedium,
+  Trash2,
+  Undo2,
+} from "lucide-react";
+import { normalizeIconValue } from "@/lib/iconUtils";
+
+const TIME_FILTERS: Array<{ value: TimeRange; label: string; Icon: LucideIcon }> = [
+  { value: "year", label: "Anual", Icon: CalendarCheck },
+  { value: "week", label: "Semana", Icon: CalendarRange },
+  { value: "month", label: "Calendario", Icon: CalendarDays },
+];
+
+const CADENCE_FILTERS: Array<{ value: Cadence | "all"; label: string; Icon: LucideIcon }> = [
+  { value: "all", label: "Todas", Icon: ListFilter },
+  { value: "daily", label: "Diario", Icon: SunMedium },
+  { value: "weekly", label: "Semanal", Icon: CalendarRange },
+];
 
 export default function Dashboard() {
   // Estado para modo oscuro (activado por defecto para matching con diseño)
@@ -26,6 +58,39 @@ export default function Dashboard() {
   // Estado para hábitos
   const [habits, setHabits] = useState<Habit[]>([]);
   const [habitCheckins, setHabitCheckins] = useState<Record<number, Record<string, number>>>({});
+  const checkinsCacheRef = useRef<Record<number, { from: string; to: string; data: Record<string, number> }>>({});
+  const pendingCheckinsRef = useRef<Record<number, Promise<Record<string, number>> | undefined>>({});
+  const normalizeCadenceValue = useCallback((cadence: unknown): Cadence => {
+    if (!cadence) return "daily";
+    const normalized = String(cadence).toLowerCase();
+    if (normalized === "weekly" || normalized.includes("semana") || normalized.includes("week")) {
+      return "weekly";
+    }
+    if (normalized === "custom" || normalized.includes("mes") || normalized.includes("month")) {
+      return "custom";
+    }
+    return "daily";
+  }, []);
+
+  const normalizeHabitData = useCallback(
+    (habit: Habit): Habit => ({
+      ...habit,
+      cadence: normalizeCadenceValue(habit.cadence),
+      targetPerDay: typeof habit.targetPerDay === "number" && habit.targetPerDay > 0 ? habit.targetPerDay : 1,
+      allowMultiplePerDay: !!habit.allowMultiplePerDay,
+      color: habit.color || DEFAULT_HABIT_COLOR,
+    }),
+    [normalizeCadenceValue]
+  );
+
+  const renderHabitIcon = (value?: string) => {
+    const Icons = LucideIcons as unknown as Record<string, unknown>;
+    const normalized = normalizeIconValue(value || "");
+    const Comp = Icons[normalized || "Star"] as unknown as ComponentType<{ size?: number }> | undefined;
+    if (Comp) return <Comp size={18} />;
+    const StarFallback = Icons.Star as unknown as ComponentType<{ size?: number }> | undefined;
+    return StarFallback ? <StarFallback size={18} /> : null;
+  };
 
   // Estado para métricas y UI
   // const [metrics, setMetrics] = useState<Metrics | null>(null);
@@ -66,7 +131,34 @@ export default function Dashboard() {
   const loadHabits = useCallback(async () => {
     try {
       const data = await getHabits();
-      setHabits(data);
+      const normalized = data.map(normalizeHabitData);
+      const existingIds = new Set(normalized.map((habit) => habit.id));
+
+      setHabits(normalized);
+      setHabitCheckins((prev) => {
+        const next: Record<number, Record<string, number>> = {};
+        normalized.forEach((habit) => {
+          next[habit.id] = prev[habit.id] || {};
+        });
+        return next;
+      });
+
+      const filteredCache: Record<number, { from: string; to: string; data: Record<string, number> }> = {};
+      for (const [key, value] of Object.entries(checkinsCacheRef.current)) {
+        const id = Number(key);
+        if (existingIds.has(id) && value) {
+          filteredCache[id] = value;
+        }
+      }
+      checkinsCacheRef.current = filteredCache;
+
+      for (const key of Object.keys(pendingCheckinsRef.current)) {
+        const id = Number(key);
+        if (!existingIds.has(id)) {
+          delete pendingCheckinsRef.current[id];
+        }
+      }
+
       setLoading(false);
     } catch (e: unknown) {
       if (e instanceof Error) {
@@ -74,7 +166,7 @@ export default function Dashboard() {
       }
       setLoading(false);
     }
-  }, []);
+  }, [normalizeHabitData]);
 
   // Cargar métricas
   const loadMetrics = useCallback(async () => {
@@ -84,7 +176,6 @@ export default function Dashboard() {
         to: dateRange.to,
       });
       // setMetrics(data); // Comentado - métricas no se muestran actualmente
-      console.log("Metrics loaded:", data); // Para debugging si es necesario
     } catch (e: unknown) {
       console.error("Error loading metrics:", e);
     }
@@ -112,38 +203,116 @@ export default function Dashboard() {
   // }, [showComparison, dateRange]);
 
   // Cargar check-ins de hábitos activos (OPTIMIZADO: una sola llamada en paralelo)
-  const loadHabitCheckins = useCallback(async (habitsToLoad: Habit[]) => {
+  const loadHabitCheckins = useCallback(async (habitsToLoad: Habit[], replace = false) => {
     const activeHabits = habitsToLoad.filter((h) => !h.isArchived);
 
     if (activeHabits.length === 0) {
-      setHabitCheckins({});
+      if (replace) setHabitCheckins({});
       return;
     }
 
-    try {
-      // Hacer todas las llamadas en paralelo usando el rango del filtro actual
-      const promises = activeHabits.map((habit) =>
-        getCheckins({
-          from: dateRange.from, // Usar el filtro actual
-          to: dateRange.to,
+    const filterDataByRange = (data: Record<string, number>, from: string, to: string) => {
+      const slice: Record<string, number> = {};
+      for (const [date, value] of Object.entries(data)) {
+        if (date >= from && date <= to) {
+          slice[date] = value;
+        }
+      }
+      return slice;
+    };
+
+    const ensureHabitCheckins = async (
+      habit: Habit,
+      requestedFrom: string,
+      requestedTo: string
+    ): Promise<Record<string, number>> => {
+      const getSliceFromCache = () => {
+        const cacheEntry = checkinsCacheRef.current[habit.id];
+        if (
+          cacheEntry &&
+          cacheEntry.from <= requestedFrom &&
+          cacheEntry.to >= requestedTo
+        ) {
+          return filterDataByRange(cacheEntry.data, requestedFrom, requestedTo);
+        }
+        return null;
+      };
+
+      const cachedSlice = getSliceFromCache();
+      if (cachedSlice) return cachedSlice;
+
+      if (!pendingCheckinsRef.current[habit.id]) {
+        pendingCheckinsRef.current[habit.id] = getCheckins({
+          from: requestedFrom,
+          to: requestedTo,
           habitId: habit.id,
-        }).then((response) => ({ habitId: habit.id, data: response.data }))
-        .catch((e) => {
-          console.error(`Error loading checkins for habit ${habit.id}:`, e);
-          return { habitId: habit.id, data: {} };
+        })
+          .then((response) => {
+            const existing = checkinsCacheRef.current[habit.id];
+            const mergedData = { ...(existing?.data ?? {}), ...response.data };
+            const newFrom = existing
+              ? existing.from < requestedFrom
+                ? existing.from
+                : requestedFrom
+              : requestedFrom;
+            const newTo = existing
+              ? existing.to > requestedTo
+                ? existing.to
+                : requestedTo
+              : requestedTo;
+            checkinsCacheRef.current[habit.id] = {
+              from: newFrom,
+              to: newTo,
+              data: mergedData,
+            };
+            return mergedData;
+          })
+          .catch((error) => {
+            console.error(`Error loading checkins for habit ${habit.id}:`, error);
+            throw error;
+          })
+          .finally(() => {
+            delete pendingCheckinsRef.current[habit.id];
+          });
+      }
+
+      try {
+        await pendingCheckinsRef.current[habit.id];
+      } catch (error) {
+        console.error(`Error awaiting checkins for habit ${habit.id}:`, error);
+        return {};
+      }
+
+      const cacheEntry = checkinsCacheRef.current[habit.id];
+      if (!cacheEntry) return {};
+
+      return filterDataByRange(cacheEntry.data, requestedFrom, requestedTo);
+    };
+
+    try {
+      const results = await Promise.all(
+        activeHabits.map(async (habit) => {
+          const baseFrom = parseISO(dateRange.from);
+          const isValidBase = !Number.isNaN(baseFrom.getTime());
+          const extraDays = habit.cadence === "weekly" ? 365 : 120;
+          const requestedFrom = isValidBase
+            ? formatDate(subDays(baseFrom, extraDays), "yyyy-MM-dd")
+            : dateRange.from;
+          const requestedTo = dateRange.to;
+
+          const data = await ensureHabitCheckins(habit, requestedFrom, requestedTo);
+          return { habitId: habit.id, data };
         })
       );
-
-      const results = await Promise.all(promises);
 
       const checkinsByHabit: Record<number, Record<string, number>> = {};
       results.forEach(({ habitId, data }) => {
         checkinsByHabit[habitId] = data;
       });
 
-      setHabitCheckins(checkinsByHabit);
-    } catch (e) {
-      console.error("Error loading checkins:", e);
+      setHabitCheckins((prev) => (replace ? checkinsByHabit : { ...prev, ...checkinsByHabit }));
+    } catch (error) {
+      console.error("Error loading checkins:", error);
     }
   }, [dateRange.from, dateRange.to]); // Depende del filtro seleccionado
 
@@ -162,7 +331,7 @@ export default function Dashboard() {
   // Cargar checkins cuando cambia el filtro o los hábitos
   useEffect(() => {
     if (habits.length === 0) return;
-    loadHabitCheckins(habits);
+    loadHabitCheckins(habits, true); // replace = true para carga completa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange.from, dateRange.to, habits.length]); // Recargar cuando cambia el filtro
 
@@ -180,6 +349,8 @@ export default function Dashboard() {
     // Ordenar por título alfabéticamente
     return [...filtered].sort((a, b) => a.title.localeCompare(b.title));
   }, [activeHabits, filterCadence]);
+  const dashboardViewMode: "default" | "week" | "month" =
+    timeRange === "month" ? "month" : timeRange === "week" ? "week" : "default";
 
   // Calcular rachas por hábito
   const habitStreaks = useMemo(() => {
@@ -189,7 +360,7 @@ export default function Dashboard() {
     for (const habit of habits) {
       const checkins = habitCheckins[habit.id] || {};
       const dates = Object.keys(checkins).filter(date => checkins[date] > 0);
-      streaks[habit.id] = computeStreak(dates, today);
+      streaks[habit.id] = computeStreak(dates, today, { cadence: habit.cadence });
     }
 
     return streaks;
@@ -208,9 +379,16 @@ export default function Dashboard() {
     try {
       setLoading(true);
       setErr(null);
-      await apiCreateHabit(habitData);
-      await loadHabits();
-      setShowCreateModal(false); // Cerrar modal después de crear
+      const created = await apiCreateHabit(habitData);
+      const normalizedHabit = normalizeHabitData(created);
+
+      setHabits((prev) => [...prev, normalizedHabit]);
+      setHabitCheckins((prev) => ({ ...prev, [normalizedHabit.id]: {} }));
+      delete checkinsCacheRef.current[normalizedHabit.id];
+      delete pendingCheckinsRef.current[normalizedHabit.id];
+
+      await loadHabitCheckins([normalizedHabit], false);
+      setShowCreateModal(false);
     } catch (e: unknown) {
       if (e instanceof Error) {
         setErr(e.message);
@@ -237,8 +415,26 @@ export default function Dashboard() {
     try {
       setLoading(true);
       setErr(null);
-      await updateHabit(habitId, habitData);
-      await loadHabits();
+      const updated = await updateHabit(habitId, habitData);
+      const normalized = normalizeHabitData(updated);
+
+      setHabits((prev) => prev.map((habit) => (habit.id === habitId ? normalized : habit)));
+
+      if (normalized.isArchived) {
+        setHabitCheckins((prev) => {
+          const next = { ...prev };
+          delete next[habitId];
+          return next;
+        });
+      }
+
+      delete checkinsCacheRef.current[habitId];
+      delete pendingCheckinsRef.current[habitId];
+
+      if (!normalized.isArchived) {
+        await loadHabitCheckins([normalized], false);
+      }
+
       setEditingHabit(null);
     } catch (e: unknown) {
       if (e instanceof Error) {
@@ -257,12 +453,10 @@ export default function Dashboard() {
       setErr(null);
 
       // Actualizar optimísticamente en el estado local (sin recargar)
-      setHabits((prevHabits) =>
-        prevHabits.map((h) => (h.id === habit.id ? habit : h))
-      );
+      const optimistic = normalizeHabitData(habit);
+      setHabits((prevHabits) => prevHabits.map((h) => (h.id === habit.id ? optimistic : h)));
 
-      // Hacer la actualización en background
-      await updateHabit(habit.id, {
+      const updated = await updateHabit(habit.id, {
         title: habit.title,
         description: habit.description || undefined,
         cadence: habit.cadence,
@@ -272,8 +466,19 @@ export default function Dashboard() {
         allowMultiplePerDay: habit.allowMultiplePerDay,
       });
 
-      // NO llamar loadHabits() ni loadHabitCheckins() - ya actualizamos el estado localmente
-      // Solo recargar si hubo un error (catch block)
+      const normalized = normalizeHabitData(updated);
+      setHabits((prevHabits) => prevHabits.map((h) => (h.id === habit.id ? normalized : h)));
+      delete checkinsCacheRef.current[habit.id];
+      delete pendingCheckinsRef.current[habit.id];
+      if (!normalized.isArchived) {
+        await loadHabitCheckins([normalized], false);
+      } else {
+        setHabitCheckins((prev) => {
+          const next = { ...prev };
+          delete next[habit.id];
+          return next;
+        });
+      }
     } catch (e: unknown) {
       // Si falla, recargar desde el servidor para revertir
       await loadHabits();
@@ -305,17 +510,29 @@ export default function Dashboard() {
 
       if (currentCount < maxCount) {
         // Incrementar optimísticamente
+        const nextCount = currentCount + 1;
         setHabitCheckins((prev) => {
           const prevCheckins = prev[habitId] || {};
-          const newCount = (prevCheckins[todayStr] || 0) + 1;
           return {
             ...prev,
             [habitId]: {
               ...prevCheckins,
-              [todayStr]: newCount,
+              [todayStr]: nextCount,
             },
           };
         });
+        const cacheEntry = checkinsCacheRef.current[habitId];
+        if (cacheEntry) {
+          cacheEntry.data[todayStr] = nextCount;
+          if (todayStr < cacheEntry.from) cacheEntry.from = todayStr;
+          if (todayStr > cacheEntry.to) cacheEntry.to = todayStr;
+        } else {
+          checkinsCacheRef.current[habitId] = {
+            from: todayStr,
+            to: todayStr,
+            data: { [todayStr]: nextCount },
+          };
+        }
 
         // Persistir incremento
         try {
@@ -337,6 +554,10 @@ export default function Dashboard() {
             },
           };
         });
+        const cacheEntry = checkinsCacheRef.current[habitId];
+        if (cacheEntry) {
+          cacheEntry.data[todayStr] = 0;
+        }
 
         // Persistir reset (usar endpoint PUT similar a batch update)
         try {
@@ -361,6 +582,18 @@ export default function Dashboard() {
           [todayStr]: newVal,
         },
       }));
+      const cacheEntry = checkinsCacheRef.current[habitId];
+      if (cacheEntry) {
+        cacheEntry.data[todayStr] = newVal;
+        if (todayStr < cacheEntry.from) cacheEntry.from = todayStr;
+        if (todayStr > cacheEntry.to) cacheEntry.to = todayStr;
+      } else {
+        checkinsCacheRef.current[habitId] = {
+          from: todayStr,
+          to: todayStr,
+          data: { [todayStr]: newVal },
+        };
+      }
 
       try {
         // For single toggle, still use createCheckin to mark; if toggling off, send PUT reset
@@ -385,7 +618,8 @@ export default function Dashboard() {
   const handleBatchUpdateCheckins = async (habitId: number, updates: Array<{ date: string; count: number }>) => {
     // Actualizar localmente de forma optimista
     setHabitCheckins((prev) => {
-      const newCheckins = { ...prev[habitId] };
+      const current = prev[habitId] || {};
+      const newCheckins = { ...current };
       updates.forEach(({ date, count }) => {
         newCheckins[date] = count;
       });
@@ -394,6 +628,24 @@ export default function Dashboard() {
         [habitId]: newCheckins,
       };
     });
+
+    const cacheEntry = checkinsCacheRef.current[habitId];
+    if (cacheEntry) {
+      updates.forEach(({ date, count }) => {
+        cacheEntry.data[date] = count;
+        if (date < cacheEntry.from) cacheEntry.from = date;
+        if (date > cacheEntry.to) cacheEntry.to = date;
+      });
+    } else if (updates.length > 0) {
+      const dates = updates.map(({ date }) => date);
+      const from = dates.reduce((min, current) => (current < min ? current : min), dates[0]);
+      const to = dates.reduce((max, current) => (current > max ? current : max), dates[0]);
+      const data: Record<string, number> = {};
+      updates.forEach(({ date, count }) => {
+        data[date] = count;
+      });
+      checkinsCacheRef.current[habitId] = { from, to, data };
+    }
 
     // Persistir todos en una sola llamada en background
     fetch("/api/checkins", {
@@ -410,8 +662,9 @@ export default function Dashboard() {
       })
       .catch((e) => {
         console.error("Error in handleBatchUpdateCheckins:", e);
-        // Solo recargar si falla
-        loadHabits();
+        // Si falla, recargar solo los checkins de este hábito
+        const habit = habits.find(h => h.id === habitId);
+        if (habit) loadHabitCheckins([habit]);
       });
 
     // Debounce: recargar métricas solo después de 1.5s sin cambios
@@ -434,7 +687,24 @@ export default function Dashboard() {
       setLoading(true);
       setErr(null);
       await deleteHabit(habitId, hard);
-      await loadHabits();
+
+      if (hard) {
+        setHabits((prev) => prev.filter((habit) => habit.id !== habitId));
+        setHabitCheckins((prev) => {
+          const next = { ...prev };
+          delete next[habitId];
+          return next;
+        });
+        delete checkinsCacheRef.current[habitId];
+        delete pendingCheckinsRef.current[habitId];
+      } else {
+        setHabits((prev) =>
+          prev.map((habit) =>
+            habit.id === habitId ? { ...habit, isArchived: true } : habit
+          )
+        );
+      }
+
       await loadMetrics();
     } catch (e: unknown) {
       if (e instanceof Error) {
@@ -452,7 +722,21 @@ export default function Dashboard() {
       setLoading(true);
       setErr(null);
       await restoreHabit(habitId);
-      await loadHabits();
+      let restoredHabit: Habit | null = null;
+      setHabits((prev) =>
+        prev.map((habit) => {
+          if (habit.id === habitId) {
+            const updated = normalizeHabitData({ ...habit, isArchived: false });
+            restoredHabit = updated;
+            return updated;
+          }
+          return habit;
+        })
+      );
+      if (restoredHabit) {
+        await loadHabitCheckins([restoredHabit], false);
+      }
+      await loadMetrics();
     } catch (e: unknown) {
       if (e instanceof Error) {
         setErr(e.message);
@@ -508,49 +792,76 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Filtros en pills - solo si hay hábitos */}
+        {/* Filtros centrales con estética minimalista */}
         {activeHabits.length > 0 && (
-          <div className="mb-6 flex flex-wrap items-center gap-2">
-            {/* Time range pills */}
-            {(["week", "month", "year"] as TimeRange[]).map((range) => (
-              <button
-                key={range}
-                onClick={() => setTimeRange(range)}
-                className={`px-3 py-1.5 text-sm rounded-full transition-all ${
-                  timeRange === range
-                    ? darkMode
-                      ? "bg-blue-600 text-white"
-                      : "bg-blue-600 text-white"
-                    : darkMode
-                    ? "bg-gray-800 text-gray-400 hover:bg-gray-700"
-                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+          <div className="mb-8 flex justify-center">
+            <div
+              className={`flex flex-wrap items-center gap-2 rounded-full px-3 py-2 border ${
+                darkMode
+                  ? "border-gray-700 bg-gray-900/70 backdrop-blur"
+                  : "border-slate-200 bg-white/80 backdrop-blur shadow-sm"
+              }`}
+            >
+              <span
+                className={`text-[11px] uppercase tracking-[0.25em] font-semibold ${
+                  darkMode ? "text-gray-500" : "text-gray-400"
                 }`}
               >
-                {getTimeRangeLabel(range)}
-              </button>
-            ))}
+              </span>
+              {TIME_FILTERS.map(({ value, label, Icon }) => {
+                const active = timeRange === value;
+                return (
+                  <button
+                    key={value}
+                    onClick={() => setTimeRange(value)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                      active
+                        ? darkMode
+                          ? "bg-white/15 text-white"
+                          : "bg-white text-slate-900 shadow-sm"
+                        : darkMode
+                        ? "text-gray-400 hover:text-white hover:bg-white/10"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                    }`}
+                    aria-pressed={active}
+                  >
+                    <Icon size={15} />
+                    {label}
+                  </button>
+                );
+              })}
 
-            {/* Divider */}
-            <div className={`h-6 w-px ${darkMode ? "bg-gray-800" : "bg-gray-300"}`} />
+              <span className={`${darkMode ? "bg-gray-700/80" : "bg-slate-200"} h-6 w-px rounded-full`} aria-hidden="true" />
 
-            {/* Cadence filter pills */}
-            {(["all", "daily", "weekly"] as (Cadence | "all")[]).map((cad) => (
-              <button
-                key={cad}
-                onClick={() => setFilterCadence(cad)}
-                className={`px-3 py-1.5 text-sm rounded-full transition-all ${
-                  filterCadence === cad
-                    ? darkMode
-                      ? "bg-purple-600 text-white"
-                      : "bg-purple-600 text-white"
-                    : darkMode
-                    ? "bg-gray-800 text-gray-400 hover:bg-gray-700"
-                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              <span
+                className={`text-[11px] uppercase tracking-[0.25em] font-semibold ${
+                  darkMode ? "text-gray-500" : "text-gray-400"
                 }`}
               >
-                {cad === "all" ? "Todas" : cad === "daily" ? "Diario" : "Semanal"}
-              </button>
-            ))}
+              </span>
+              {CADENCE_FILTERS.map(({ value, label, Icon }) => {
+                const active = filterCadence === value;
+                return (
+                  <button
+                    key={value}
+                    onClick={() => setFilterCadence(value)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                      active
+                        ? darkMode
+                          ? "bg-white/15 text-white"
+                          : "bg-white text-slate-900 shadow-sm"
+                        : darkMode
+                        ? "text-gray-400 hover:text-white hover:bg-white/10"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                    }`}
+                    aria-pressed={active}
+                  >
+                    <Icon size={15} />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -565,13 +876,12 @@ export default function Dashboard() {
           </div>
         ) : activeHabits.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
-            <div
-              className={`text-6xl mb-4 ${
-                darkMode ? "opacity-20" : "opacity-30"
+            <ClipboardList
+              size={64}
+              className={`mb-4 ${
+                darkMode ? "text-gray-600" : "text-gray-300"
               }`}
-            >
-              📋
-            </div>
+            />
             <h3
               className={`text-xl font-semibold mb-2 ${
                 darkMode ? "text-gray-400" : "text-gray-600"
@@ -600,6 +910,7 @@ export default function Dashboard() {
             habitCheckins={habitCheckins}
             habitStreaks={habitStreaks}
             dateRange={dateRange}
+            viewMode={dashboardViewMode}
             darkMode={darkMode}
             onCheckin={handleCheckin}
             onEdit={handleEditFromModal}
@@ -624,7 +935,7 @@ export default function Dashboard() {
                 darkMode ? "text-gray-500 hover:text-gray-400" : "text-gray-600 hover:text-gray-700"
               }`}
             >
-              <span>{showArchived ? "▼" : "▶"}</span>
+              {showArchived ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
               Archivados ({archivedHabits.length})
             </button>
 
@@ -640,9 +951,9 @@ export default function Dashboard() {
                     <div className="flex items-center gap-3">
                       <div
                         className="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
-                        style={{ backgroundColor: habit.color || "#3b82f6" }}
+                        style={{ backgroundColor: habit.color || DEFAULT_HABIT_COLOR }}
                       >
-                        {habit.icon || "⭐"}
+                        {renderHabitIcon(habit.icon)}
                       </div>
                       <div>
                         <div className={`font-medium text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
@@ -652,16 +963,25 @@ export default function Dashboard() {
                     </div>
 
                     <div className="flex gap-2">
-                      <Button onClick={() => handleRestore(habit.id)} disabled={loading} variant="ghost" size="sm">
-                        ♻️
+                      <Button
+                        onClick={() => handleRestore(habit.id)}
+                        disabled={loading}
+                        variant="ghost"
+                        size="sm"
+                        aria-label="Restaurar hábito"
+                        title="Restaurar hábito"
+                      >
+                        <Undo2 size={16} />
                       </Button>
                       <Button
                         onClick={() => handleDelete(habit.id, true)}
                         disabled={loading}
                         variant="ghost"
                         size="sm"
+                        aria-label="Eliminar hábito"
+                        title="Eliminar hábito"
                       >
-                        🗑️
+                        <Trash2 size={16} />
                       </Button>
                     </div>
                   </div>
@@ -674,15 +994,16 @@ export default function Dashboard() {
 
       {/* Botón flotante para agregar hábito - solo visible si hay hábitos */}
       {activeHabits.length > 0 && (
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className={`fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl transition-transform hover:scale-110 ${
-            darkMode ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-600 hover:bg-blue-700"
-          } text-white`}
-          title="Añadir hábito"
-        >
-          +
-        </button>
+      <button
+        onClick={() => setShowCreateModal(true)}
+        className={`fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl transition-transform hover:scale-110 ${
+          darkMode ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-600 hover:bg-blue-700"
+        } text-white`}
+        title="Añadir hábito"
+        aria-label="Añadir hábito"
+      >
+        +
+      </button>
       )}
 
       {/* Botón flotante para cambiar tema - inferior izquierda */}
@@ -692,8 +1013,9 @@ export default function Dashboard() {
           darkMode ? "bg-gray-800 hover:bg-gray-700 text-yellow-400" : "bg-gray-200 hover:bg-gray-300 text-gray-700"
         }`}
         title="Cambiar tema"
+        aria-label={darkMode ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
       >
-        {darkMode ? "☀️" : "🌙"}
+        {darkMode ? <Sun size={20} /> : <Moon size={20} />}
       </button>
 
       {/* Modal para crear hábito */}

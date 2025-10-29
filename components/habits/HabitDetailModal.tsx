@@ -1,6 +1,8 @@
 "use client";
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import { format, subMonths, startOfWeek, endOfWeek, eachDayOfInterval } from "date-fns";
+import { format, subMonths, startOfWeek, endOfWeek, eachDayOfInterval, parseISO } from "date-fns";
+import { Archive, Trash2 } from "lucide-react";
+import { DEFAULT_HABIT_COLOR } from "@/lib/colors";
 import { Habit } from "@/types";
 import { HabitHeatmap } from "./HabitHeatmap";
 import { EditableIcon } from "./EditableIcon";
@@ -69,13 +71,13 @@ export function HabitDetailModal({
   };
 
   const colorWithAlpha = (hex: string, alpha = 1) => {
-    const { r, g, b } = hexToRgb(hex || "#BAE1FF");
+    const { r, g, b } = hexToRgb(hex || DEFAULT_HABIT_COLOR);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   };
 
   // Función curried para el calendario (solo pasa alpha, usa el color del hábito)
   const getColorWithAlpha = (alpha: number) => {
-    return colorWithAlpha(editedHabit.color || "#BAE1FF", alpha);
+    return colorWithAlpha(editedHabit.color || DEFAULT_HABIT_COLOR, alpha);
   };
 
   // Obtener fecha inicial del historial
@@ -172,6 +174,35 @@ export function HabitDetailModal({
     const count = localData[dateStr] || 0;
     return getIntensity(count);
   };
+  const weeklySelectedDates = useMemo(() => {
+    if (editedHabit.cadence !== 'weekly') return new Set<string>();
+    const selected = new Set<string>();
+    Object.entries(localData).forEach(([date, count]) => {
+      if (count > 0) selected.add(date);
+    });
+    return selected;
+  }, [editedHabit.cadence, localData]);
+  const weeklyWeekKeys = useMemo(() => {
+    if (editedHabit.cadence !== 'weekly') return new Set<string>();
+    const weeks = new Set<string>();
+    weeklySelectedDates.forEach((date) => {
+      weeks.add(format(startOfWeek(parseISO(date), { weekStartsOn: 1 }), "yyyy-MM-dd"));
+    });
+    return weeks;
+  }, [weeklySelectedDates, editedHabit.cadence]);
+  const getWeeklyHighlightForDate = useCallback(
+    (date: Date): "selected" | "adjacent" | "none" => {
+      if (editedHabit.cadence !== 'weekly') return 'none';
+      const dateStr = format(date, "yyyy-MM-dd");
+      if (weeklySelectedDates.has(dateStr) && (localData[dateStr] || 0) > 0) {
+        return 'selected';
+      }
+      const weekKey = format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd");
+      if (weeklyWeekKeys.has(weekKey)) return 'adjacent';
+      return 'none';
+    },
+    [editedHabit.cadence, weeklySelectedDates, weeklyWeekKeys, localData]
+  );
 
   // Scroll automático al final
   useEffect(() => {
@@ -230,8 +261,8 @@ export function HabitDetailModal({
             <div className="flex items-center gap-3 flex-1">
               {/* Icono editable */}
               <EditableIcon
-                icon={editedHabit.icon || "⭐"}
-                color={editedHabit.color || "#BAE1FF"}
+                icon={editedHabit.icon || "Star"}
+                color={editedHabit.color || DEFAULT_HABIT_COLOR}
                 darkMode={darkMode}
                 onIconChange={handleIconChange}
               />
@@ -340,11 +371,12 @@ export function HabitDetailModal({
                   onClose();
                 }
               }}
-              className={`text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 ${
+              className={`text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
                 darkMode ? "text-gray-300 hover:text-yellow-400 hover:bg-gray-700" : "text-gray-600 hover:text-yellow-600 hover:bg-gray-100"
               }`}
             >
-              📦 Archivar
+              <Archive size={14} />
+              Archivar
             </button>
             <button
               onClick={(e) => {
@@ -354,11 +386,12 @@ export function HabitDetailModal({
                   onClose();
                 }
               }}
-              className={`text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 ${
+              className={`text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
                 darkMode ? "text-gray-300 hover:text-red-400 hover:bg-gray-700" : "text-gray-600 hover:text-red-600 hover:bg-gray-100"
               }`}
             >
-              🗑️ Eliminar
+              <Trash2 size={14} />
+              Eliminar
             </button>
           </div>
         </div>
@@ -383,14 +416,15 @@ export function HabitDetailModal({
           </div>
 
           {/* Calendario mensual */}
-          <HabitCalendar
-            habit={editedHabit}
-            data={localData}
-            darkMode={darkMode}
-            onDayClick={handleDayClick}
-            getIntensity={getIntensityForDate}
-            colorWithAlpha={getColorWithAlpha}
-          />
+            <HabitCalendar
+              habit={editedHabit}
+              data={localData}
+              darkMode={darkMode}
+              onDayClick={handleDayClick}
+              getIntensity={getIntensityForDate}
+              getHighlight={getWeeklyHighlightForDate}
+              colorWithAlpha={getColorWithAlpha}
+            />
         </div>
       </div>
     </div>

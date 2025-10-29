@@ -1,36 +1,6 @@
 "use client";
 import { useState } from "react";
-
-// Paleta de colores moderna para hábitos - pasteles y vibrantes
-const COLORS = [
-  // Fila 1 - Pasteles cálidos
-  "#FFB3BA", // Pastel Pink
-  "#FFDFBA", // Pastel Peach
-  "#FFFFBA", // Pastel Yellow
-  "#BAFFC9", // Pastel Mint
-  "#BAE1FF", // Pastel Blue
-
-  // Fila 2 - Pasteles fríos
-  "#E0BBE4", // Pastel Purple
-  "#FFE5D9", // Pastel Cream
-  "#D4F1F4", // Pastel Cyan
-  "#C9F0DD", // Pastel Green
-  "#FFC8DD", // Pastel Rose
-
-  // Fila 3 - Vibrantes suaves
-  "#FF6B9D", // Hot Pink
-  "#FFA94D", // Orange
-  "#FFD93D", // Yellow
-  "#6BCF7F", // Green
-  "#4ECDC4", // Teal
-
-  // Fila 4 - Elegantes
-  "#A7C7E7", // Periwinkle
-  "#C77DFF", // Purple
-  "#457B9D", // Navy
-  "#E63946", // Crimson
-  "#06D6A0", // Caribbean Green
-];
+import { HABIT_COLORS } from "@/lib/colors";
 
 interface ColorPickerProps {
   value: string;
@@ -70,7 +40,7 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
               Elegí un color
             </p>
             <div className="grid grid-cols-5 gap-2">
-              {COLORS.map((color) => (
+              {HABIT_COLORS.map((color) => (
                 <button
                   key={color}
                   type="button"

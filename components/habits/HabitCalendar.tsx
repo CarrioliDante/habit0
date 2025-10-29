@@ -10,6 +10,7 @@ interface HabitCalendarProps {
   darkMode: boolean;
   onDayClick: (date: Date) => void;
   getIntensity: (date: Date) => number;
+  getHighlight?: (date: Date) => "selected" | "adjacent" | "none";
   colorWithAlpha: (alpha: number) => string;
 }
 
@@ -22,6 +23,7 @@ export function HabitCalendar({
   darkMode,
   onDayClick,
   getIntensity,
+  getHighlight,
   colorWithAlpha,
 }: HabitCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -87,17 +89,28 @@ export function HabitCalendar({
           const intensity = getIntensity(date);
           const isCurrentMonth = isSameMonth(date, currentMonth);
           const isFuture = date > new Date();
+          const highlightState = getHighlight ? getHighlight(date) : "none";
+          let backgroundColor: string;
+
+          if (highlightState === "selected") {
+            backgroundColor = colorWithAlpha(1);
+          } else if (highlightState === "adjacent") {
+            backgroundColor = colorWithAlpha(0.33);
+          } else if (intensity > 0) {
+            backgroundColor = colorWithAlpha(intensity * 0.2);
+          } else {
+            backgroundColor = darkMode ? "#1f2937" : "#f3f4f6";
+          }
 
           return (
             <button
               key={idx}
-              onClick={() => !isFuture && onDayClick(date)}
-              disabled={isFuture}
-              style={{
-                backgroundColor: intensity > 0
-                  ? colorWithAlpha(intensity * 0.2)
-                  : darkMode ? "#1f2937" : "#f3f4f6"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!isFuture) onDayClick(date);
               }}
+              disabled={isFuture}
+              style={{ backgroundColor }}
               className={`
                 relative h-12 rounded flex flex-col items-center justify-center text-base
                 transition-all

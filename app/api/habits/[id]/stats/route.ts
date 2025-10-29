@@ -4,7 +4,8 @@ import { habits, checkins } from "@/db/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { getOrCreateInternalUser } from "@/lib/user";
 import { computeStreak, adherence } from "@/lib/metrics";
-import { eachDayOfInterval, parseISO } from "date-fns";
+import type { Cadence } from "@/types";
+import { eachDayOfInterval, parseISO, startOfWeek, format as formatDate } from "date-fns";
 
 /**
  * GET /api/habits/:id/stats?from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -70,7 +71,7 @@ export async function GET(
   const checkinDates = checkinsData.map(c => c.date);
 
   // Calcular racha actual
-  const streak = computeStreak(checkinDates, to);
+  const streak = computeStreak(checkinDates, to, { cadence: habit.cadence as Cadence });
 
   // Calcular mejor racha histórica (requiere todos los check-ins)
   const allCheckins = await db
@@ -79,30 +80,42 @@ export async function GET(
     .where(eq(checkins.habitId, habitId))
     .orderBy(desc(checkins.date));
 
-  const allDates = allCheckins.map(c => c.date);
-  let bestStreak = 0;
-  let tempStreak = 0;
-  const sortedDates = [...new Set(allDates)].sort();
+  const allDates = allCheckins.map((c) => String(c.date).slice(0, 10));
 
-  // Calcular mejor racha iterando por todas las fechas
-  for (let i = 0; i < sortedDates.length; i++) {
-    if (i === 0) {
-      tempStreak = 1;
-    } else {
-      const prevDate = new Date(sortedDates[i - 1]);
-      const currDate = new Date(sortedDates[i]);
-      const diffDays = Math.floor((currDate.getTime() - prevDate.getTime()) / 86400000);
+  const computeBestConsecutive = (keys: string[], stepDays: number) => {
+    if (keys.length === 0) return 0;
+    let best = 0;
+    let current = 0;
+    let prevDate: Date | null = null;
 
-      if (diffDays === 1) {
-        tempStreak++;
+    for (const key of keys) {
+      const date = parseISO(key);
+      if (!prevDate) {
+        current = 1;
       } else {
-        tempStreak = 1;
+        const diffDays = Math.round((date.getTime() - prevDate.getTime()) / 86400000);
+        current = diffDays === stepDays ? current + 1 : 1;
       }
+      if (current > best) best = current;
+      prevDate = date;
     }
 
-    if (tempStreak > bestStreak) {
-      bestStreak = tempStreak;
-    }
+    return best;
+  };
+
+  let bestStreak: number;
+  if (habit.cadence === "weekly") {
+    const weekKeys = Array.from(
+      new Set(
+        allDates.map((iso) =>
+          formatDate(startOfWeek(parseISO(iso), { weekStartsOn: 1 }), "yyyy-MM-dd")
+        )
+      )
+    ).sort();
+    bestStreak = computeBestConsecutive(weekKeys, 7);
+  } else {
+    const sortedDates = Array.from(new Set(allDates)).sort();
+    bestStreak = computeBestConsecutive(sortedDates, 1);
   }
 
   // Calcular días del rango

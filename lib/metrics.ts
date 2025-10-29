@@ -1,24 +1,54 @@
-/**
- * Calcula la racha actual de días consecutivos con check-ins
- * @param checkinDatesISO - Array de fechas en formato ISO (YYYY-MM-DD) con check-ins registrados
- * @param todayISO - Fecha actual en formato ISO (YYYY-MM-DD)
- * @returns Número de días consecutivos desde hoy hacia atrás con check-ins
- */
-export function computeStreak(checkinDatesISO: string[], todayISO: string) {
-  // Crear un Set para búsquedas rápidas de fechas (O(1) vs O(n))
-  const set = new Set(checkinDatesISO);
-  // Inicializar fecha actual y contador de racha
-  const date = new Date(todayISO);
-  let n = 0;
+import type { Cadence } from "@/types";
+import {
+  format as formatDate,
+  parseISO,
+  startOfWeek,
+  subWeeks,
+} from "date-fns";
 
-  // Mientras exista un check-in para la fecha actual
-  while (set.has(date.toISOString().slice(0,10))) {
-    n++; // Incrementar contador de racha
-    date.setDate(date.getDate() - 1); // Retroceder un día
+/**
+ * Calcula la racha actual de check-ins para hábitos diarios o semanales.
+ * Para hábitos semanales, considera una semana cumplida si tuvo al menos
+ * un check-in dentro de esa semana calendario (lunes a domingo).
+ */
+export function computeStreak(
+  checkinDatesISO: string[],
+  todayISO: string,
+  options?: { cadence?: Cadence }
+) {
+  const cadence = options?.cadence ?? "daily";
+  const uniqueDates = Array.from(new Set(checkinDatesISO));
+
+  if (cadence === "weekly") {
+    if (uniqueDates.length === 0) return 0;
+
+    const weekKeys = new Set(
+      uniqueDates.map((iso) =>
+        formatDate(startOfWeek(parseISO(String(iso)), { weekStartsOn: 1 }), "yyyy-MM-dd")
+      )
+    );
+
+    let streak = 0;
+    let cursor = startOfWeek(parseISO(todayISO), { weekStartsOn: 1 });
+
+    while (weekKeys.has(formatDate(cursor, "yyyy-MM-dd"))) {
+      streak += 1;
+      cursor = subWeeks(cursor, 1);
+    }
+
+    return streak;
   }
 
-  // Retornar el número de días consecutivos
-  return n;
+  const set = new Set(uniqueDates);
+  const cursor = parseISO(todayISO);
+  let streak = 0;
+
+  while (set.has(formatDate(cursor, "yyyy-MM-dd"))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  return streak;
 }
 
 /**

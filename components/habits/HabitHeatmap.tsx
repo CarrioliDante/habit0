@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState, useRef, useEffect } from "react";
+import { DEFAULT_HABIT_COLOR } from "@/lib/colors";
 import {
   eachDayOfInterval,
   format,
@@ -34,7 +35,7 @@ export function HabitHeatmap({
   data,
   from,
   to,
-  color = "#BAE1FF",
+  color = DEFAULT_HABIT_COLOR,
   targetPerDay = 1,
   allowMultiplePerDay = false,
   darkMode = false,
@@ -56,56 +57,42 @@ export function HabitHeatmap({
 
   // Devuelve una versión RGBA del color con la opacidad indicada (0-1)
   const colorWithAlpha = (hex: string, alpha = 1) => {
-    const { r, g, b } = hexToRgb(hex || '#BAE1FF');
+    const { r, g, b } = hexToRgb(hex || DEFAULT_HABIT_COLOR);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   };
 
-  // Helper: Para hábitos semanales, encontrar el día de check-in de cada semana
-  const getWeeklyCheckinDates = useMemo(() => {
-    if (cadence !== 'weekly') return new Set<string>();
+const weeklySelectedDates = useMemo(() => {
+  if (cadence !== 'weekly') return new Set<string>();
+  const selected = new Set<string>();
+  Object.entries(data).forEach(([date, count]) => {
+    if (count > 0) {
+      selected.add(date);
+    }
+  });
+  return selected;
+}, [cadence, data]);
 
-    const checkinDates = new Set<string>();
-    Object.entries(data).forEach(([date, count]) => {
-      if (count > 0) {
-        checkinDates.add(date);
-      }
-    });
-    return checkinDates;
-  }, [cadence, data]);
+const weeklyWeekKeys = useMemo(() => {
+  if (cadence !== 'weekly') return new Set<string>();
+  const weeks = new Set<string>();
+  weeklySelectedDates.forEach((date) => {
+    weeks.add(format(startOfWeek(parseISO(date), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
+  });
+  return weeks;
+}, [cadence, weeklySelectedDates]);
 
-  // Helper: Calcular intensidad para hábitos semanales basada en distancia al día de check-in
-  const getWeeklyIntensity = (date: Date): number => {
-    const dateStr = format(date, 'yyyy-MM-dd');
-
-    // Si este día tiene el check-in, intensidad máxima
-    if (getWeeklyCheckinDates.has(dateStr)) return 5;
-
-    // Buscar el día de check-in de esta semana
-    const weekStart = startOfWeek(date, { weekStartsOn: 1 }); // Lunes
-    const weekEnd = endOfWeek(date, { weekStartsOn: 1 }); // Domingo
-
-    let checkinDate: Date | null = null;
-    getWeeklyCheckinDates.forEach(dateStr => {
-      const d = parseISO(dateStr);
-      if (d >= weekStart && d <= weekEnd) {
-        checkinDate = d;
-      }
-    });
-
-    // Si no hay check-in esta semana, intensidad 0
-    if (!checkinDate) return 0;
-
-    // Calcular distancia en días desde el check-in
-    const daysDiff = Math.abs(differenceInDays(date, checkinDate));
-
-    // Mapear distancia a intensidad (gradiente suave)
-    // 0 días = 5, 1 día = 4, 2 días = 3, 3 días = 2, 4+ días = 1
-    if (daysDiff === 0) return 5;
-    if (daysDiff === 1) return 4;
-    if (daysDiff === 2) return 3;
-    if (daysDiff === 3) return 2;
-    return 1;
-  };
+const getWeeklyHighlight = (date: Date): 'selected' | 'adjacent' | 'none' => {
+  if (cadence !== 'weekly') return 'none';
+  const dateStr = format(date, 'yyyy-MM-dd');
+  if (weeklySelectedDates.has(dateStr) && (data[dateStr] || 0) > 0) {
+    return 'selected';
+  }
+  const weekKey = format(startOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+  if (weeklyWeekKeys.has(weekKey)) {
+    return 'adjacent';
+  }
+  return 'none';
+};
 
   // Calcular el rango de días para determinar el layout
   const dayRange = useMemo(() => {
@@ -306,31 +293,33 @@ export function HabitHeatmap({
     const dateStr = format(date, "yyyy-MM-dd");
     const count = data[dateStr] || 0;
 
-    // Para hábitos semanales, usar lógica especial de gradiente
-    let intensity: number;
     if (cadence === 'weekly') {
-      intensity = getWeeklyIntensity(date);
-    } else {
-      intensity = getIntensity(count);
+      const highlight = getWeeklyHighlight(date);
+      if (highlight === 'selected') {
+        return { backgroundColor: colorWithAlpha(color || DEFAULT_HABIT_COLOR, 1), className: "" };
+      }
+      if (highlight === 'adjacent') {
+        return { backgroundColor: colorWithAlpha(color || DEFAULT_HABIT_COLOR, 0.33), className: "" };
+      }
+      const base = colorWithAlpha(color || DEFAULT_HABIT_COLOR, darkMode ? 0.06 : 0.08);
+      return { backgroundColor: base, className: "" };
     }
 
-    // Sin check-ins - mostrar versión suave del color del hábito
+    let intensity = getIntensity(count);
+
     if (intensity === 0) {
-      // Usar versión muy suave del color del hábito como base
-      const base = colorWithAlpha(color || '#BAE1FF', darkMode ? 0.06 : 0.08);
+      const base = colorWithAlpha(color || DEFAULT_HABIT_COLOR, darkMode ? 0.06 : 0.08);
       return {
         backgroundColor: base,
         className: "",
       };
     }
 
-    // Con check-ins - usar el color del hábito con opacidad progresiva
-    // 6 niveles de opacidad: 0 (vacío), 1 (20%), 2 (40%), 3 (60%), 4 (80%), 5 (100%)
     const opacityLevels = [0, 0.2, 0.4, 0.6, 0.8, 1.0];
     const opacityValue = opacityLevels[intensity];
 
     return {
-      backgroundColor: colorWithAlpha(color || '#BAE1FF', opacityValue),
+      backgroundColor: colorWithAlpha(color || DEFAULT_HABIT_COLOR, opacityValue),
       className: "",
     };
   };
@@ -422,8 +411,8 @@ export function HabitHeatmap({
               // Para year: w-3 (12px) + gap-0.5 (2px) = 14px por columna
               // Para month: w-4 (16px) + gap-1 (4px) = 20px por columna
               const cellWidth = isInModal
-                ? (viewMode === 'year' ? 18 : 24) // Más grande en modal
-                : (viewMode === 'year' ? 14 : 20); // Calculado exactamente: 12px celda + 2px gap = 14px
+                ? (viewMode === 'year' ? 22 : 24)
+                : (viewMode === 'year' ? 18 : 20);
               return (
                 <div
                   key={idx}
@@ -445,7 +434,7 @@ export function HabitHeatmap({
         <div className="flex">
           {/* Eje izquierdo: días de la semana - FIJO con sticky y gradiente */}
           <div
-            className={`flex flex-col mr-1.5 ${viewMode === 'year' ? 'gap-0.5' : 'gap-1'} sticky left-0 z-10`}
+            className={`flex flex-col mr-1.5 ${viewMode === 'year' ? 'gap-1' : 'gap-1'} sticky left-0 z-10`}
             style={{
               background: darkMode
                 ? 'linear-gradient(to right, #111827 0%, #111827 75%, transparent 100%)'
@@ -456,11 +445,11 @@ export function HabitHeatmap({
           >
             {weekDays.map((d) => {
               const size = isInModal
-                ? (viewMode === 'year' ? 'w-4 h-4' : 'w-5 h-5')
-                : (viewMode === 'year' ? 'w-3 h-3' : 'w-4 h-4');
+                ? (viewMode === 'year' ? 'w-5 h-5' : 'w-6 h-6')
+                : (viewMode === 'year' ? 'w-4 h-4' : 'w-5 h-5');
               const height = isInModal
-                ? (viewMode === 'year' ? '16px' : '20px')
-                : (viewMode === 'year' ? '12px' : '16px');
+                ? (viewMode === 'year' ? '18px' : '20px')
+                : (viewMode === 'year' ? '14px' : '16px');
 
               return (
                 <div
@@ -477,9 +466,9 @@ export function HabitHeatmap({
           </div>
 
           {/* Grid semanas */}
-          <div className={`flex ${viewMode === 'year' ? 'gap-0.5' : 'gap-1'}`}>
+          <div className={`flex ${viewMode === 'year' ? 'gap-1' : 'gap-1'}`}>
             {displayWeeks.map((week, weekIndex) => (
-              <div key={weekIndex} className={`flex flex-col ${viewMode === 'year' ? 'gap-0.5' : 'gap-1'}`}>
+              <div key={weekIndex} className={`flex flex-col ${viewMode === 'year' ? 'gap-1' : 'gap-1'}`}>
                 {week.map((date, dayIndex) => {
                   const dateStr = format(date, "yyyy-MM-dd");
                   const count = data[dateStr] || 0;
@@ -487,8 +476,8 @@ export function HabitHeatmap({
 
                   // Ajustar tamaño según si está en modal y viewMode
                   const size = isInModal
-                    ? (viewMode === 'year' ? 'w-4 h-4' : 'w-5 h-5')
-                    : (viewMode === 'year' ? 'w-3 h-3' : 'w-4 h-4');
+                    ? (viewMode === 'year' ? 'w-5 h-5' : 'w-6 h-6')
+                    : (viewMode === 'year' ? 'w-4 h-4' : 'w-5 h-5');
 
                   return (
                     <div

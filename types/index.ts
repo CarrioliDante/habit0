@@ -6,8 +6,8 @@ export type Habit = {
   id: number;
   title: string;
   description?: string | null;
-  icon?: string; // 🎨 Emoji o nombre de icono
-  color?: string; // 🎨 Color hex
+  icon?: string; // Nombre del icono lucide
+  color?: string; // Color en formato hex
   cadence: Cadence;
   targetPerDay: number;
   allowMultiplePerDay?: boolean; // Si permite múltiples check-ins por día
@@ -26,11 +26,11 @@ export type Metrics = {
 export type CreateHabitRequest = {
   title: string;
   description?: string;
-  icon?: string; // 🎨 Nuevo
-  color?: string; // 🎨 Nuevo
+  icon?: string; // Nombre del icono lucide
+  color?: string; // Color en formato hex
   cadence: Cadence;
   targetPerDay: number;
-  allowMultiplePerDay?: boolean; // 🆕 Permitir múltiples check-ins por día
+  allowMultiplePerDay?: boolean; // Permitir múltiples check-ins por día
 };
 
 export type CreateCheckinRequest = {

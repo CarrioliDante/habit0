@@ -7,7 +7,7 @@ import { checkins, habits } from "@/db/schema";
 // Importar Zod para validación de datos
 import { z } from "zod";
 // Importar funciones de Drizzle ORM para construir consultas
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 // Importar función helper para obtener/crear usuario interno
 import { getOrCreateInternalUser } from "@/lib/user";
 // Importar funciones de date-fns para manejo de fechas
@@ -71,44 +71,30 @@ export async function POST(req: Request) {
 
   // Insertar el check-in en la base de datos
   // Si ya existe un check-in para esa fecha y el hábito permite múltiples, incrementar
-  const existingCheckin = await db.query.checkins.findFirst({
-    where: and(
-      eq(checkins.habitId, habitId),
-      eq(checkins.userId, me.id),
-      eq(checkins.date, date)
-    ),
-  });
+  const increment = Math.max(1, parsed.data.count ?? 1);
 
-  let inserted;
+  const [inserted] = await db
+    .insert(checkins)
+    .values({
+      habitId,
+      userId: me.id,
+      date,
+      count: habit.allowMultiplePerDay ? increment : 1,
+      note,
+    })
+    .onConflictDoUpdate({
+      target: [checkins.habitId, checkins.userId, checkins.date],
+      set: habit.allowMultiplePerDay
+        ? {
+            count: sql`${checkins.count} + ${increment}`,
+            note: note ?? checkins.note,
+          }
+        : note
+        ? { note }
+        : {},
+    })
+    .returning();
 
-  if (existingCheckin && habit.allowMultiplePerDay) {
-    // Si existe y permite múltiples, incrementar el contador
-    [inserted] = await db
-      .update(checkins)
-      .set({
-        count: (existingCheckin.count || 1) + 1,
-        note: note || existingCheckin.note
-      })
-      .where(eq(checkins.id, existingCheckin.id))
-      .returning();
-  } else if (existingCheckin) {
-    // Si existe pero no permite múltiples, no hacer nada (retornar el existente)
-    inserted = existingCheckin;
-  } else {
-    // Si no existe, crear uno nuevo
-    [inserted] = await db
-      .insert(checkins)
-      .values({
-        habitId,
-        userId: me.id,
-        date,
-        count: 1,
-        note,
-      })
-      .returning();
-  }
-
-  // Retornar el ID del check-in creado/actualizado
   return Response.json({ id: inserted.id, count: inserted.count });
 }
 

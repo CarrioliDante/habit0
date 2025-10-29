@@ -25,8 +25,8 @@ export const habits = pgTable("habits", {
   title: varchar("title", { length: 256 }).notNull(),
   // Columna description: texto largo opcional para describir el hábito
   description: text("description"),
-  // Columna icon: string de hasta 32 caracteres para un emoji o icono, por defecto "⭐"
-  icon: varchar("icon", { length: 32 }).default("⭐"),
+  // Columna icon: string de hasta 32 caracteres para el nombre del icono, por defecto "Star"
+  icon: varchar("icon", { length: 32 }).default("Star"),
   // Columna color: string de hasta 16 caracteres para un color hex, por defecto "#3b82f6"
   color: varchar("color", { length: 16 }).default("#3b82f6"),
   // Columna cadence: string de hasta 64 caracteres para la frecuencia del hábito (ej: "daily"), obligatorio
@@ -77,4 +77,3 @@ export const checkins = pgTable("checkins", {
   // Índice adicional para búsquedas por habitId (usado frecuentemente)
   index("idx_checkins_habit").on(table.habitId),
 ]);
-
