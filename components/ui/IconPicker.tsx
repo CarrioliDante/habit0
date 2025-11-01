@@ -21,9 +21,10 @@ export function IconPicker({ value, onChange, darkMode = false }: IconPickerProp
 
   const renderIcon = (name: string, size = 18) => {
     const normalized = normalizeIconValue(name);
-    const Comp = Icons[normalized] as unknown as ComponentType<{ size?: number }> | undefined;
-    if (Comp) return <Comp size={size} />;
-    return <LucideIcons.Star size={size} />;
+    const Comp = Icons[normalized] as unknown as ComponentType<{ size?: number; className?: string }> | undefined;
+    const iconColor = darkMode ? 'text-gray-300' : 'text-gray-700';
+    if (Comp) return <Comp size={size} className={iconColor} />;
+    return <LucideIcons.Star size={size} className={iconColor} />;
   };
 
   const filtered = query

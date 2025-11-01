@@ -101,15 +101,20 @@ export function HabitCalendar({
           const isFuture = date > new Date();
           const highlightState = getHighlight ? getHighlight(date) : "none";
           let backgroundColor: string;
+          let textColor: string;
 
           if (highlightState === "selected") {
             backgroundColor = colorWithAlpha(1);
+            textColor = "#ffffff"; // Blanco para fondos seleccionados
           } else if (highlightState === "adjacent") {
             backgroundColor = colorWithAlpha(0.33);
+            textColor = darkMode ? "#e5e7eb" : "#1f2937"; // Contraste adecuado
           } else if (intensity > 0) {
             backgroundColor = colorWithAlpha(intensity * 0.2);
+            textColor = darkMode ? "#e5e7eb" : "#1f2937"; // Texto oscuro en modo claro
           } else {
             backgroundColor = darkMode ? "#1f2937" : "#f3f4f6";
+            textColor = darkMode ? "#9ca3af" : "#6b7280";
           }
 
           return (
@@ -139,7 +144,7 @@ export function HabitCalendar({
                   : `${dateStr}: ${count} check-in${count !== 1 ? "s" : ""}`
               }
             >
-              <span className={isCurrentMonth ? "" : darkMode ? "text-gray-500" : "text-gray-400"}>
+              <span style={{ color: textColor }}>
                 {format(date, "d")}
               </span>
 
