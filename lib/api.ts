@@ -11,6 +11,7 @@ import type {
   HabitStats,
   ISODate,
   PeriodComparison,
+  ApiResponse,
 } from "@/types";
 
 export class ApiError extends Error {
@@ -28,6 +29,9 @@ function buildQuery(params?: Record<string, string | number | undefined>) {
   return sp.toString() ? `?${sp.toString()}` : "";
 }
 
+/**
+ * Helper para manejar respuestas normalizadas con ApiResponse
+ */
 async function apiFetch<T>(
   url: string,
   options?: RequestInit,
@@ -38,15 +42,30 @@ async function apiFetch<T>(
     ...options,
   });
 
+  // Parsear respuesta
+  const json = await res.json();
+
   if (!res.ok) {
     if (res.status === 401 && retry > 0) {
       // Retry once (ej: cookie clerk revalida)
       return apiFetch<T>(url, options, retry - 1);
     }
-    throw new ApiError(res.status, `${res.statusText}`);
+    // Extraer mensaje de error de respuesta normalizada
+    const errorMsg = (json as ApiResponse)?.error || res.statusText;
+    throw new ApiError(res.status, errorMsg);
   }
 
-  return res.json() as Promise<T>;
+  // Si es una respuesta normalizada, extraer data
+  if (typeof json === "object" && "success" in json) {
+    const response = json as ApiResponse<T>;
+    if (!response.success) {
+      throw new ApiError(res.status, response.error || "Unknown error");
+    }
+    return response.data as T;
+  }
+
+  // Respuesta legacy (para endpoints aún no migrados)
+  return json as T;
 }
 
 // ==================== HABITS ====================
@@ -64,15 +83,12 @@ export const createHabit = (data: CreateHabitRequest): Promise<Habit> =>
 //DELETE
 export async function deleteHabit(id: number, hard = false) {
   const url = `/api/habits/${id}${hard ? "?hard=true" : ""}`;
-  const res = await fetch(url, { method: "DELETE" });
-  if (!res.ok) throw new Error(`DELETE ${res.status}`);
-  return res.json() as Promise<{ ok: boolean; id: number; hard: boolean }>;
+  return apiFetch<{ id: number; hard: boolean }>(url, { method: "DELETE" });
 }
+
 //RESTORE
 export async function restoreHabit(id: number) {
-  const res = await fetch(`/api/habits/${id}/restore`, { method: "POST" });
-  if (!res.ok) throw new Error(`RESTORE ${res.status}`);
-  return res.json() as Promise<{ ok: boolean; id: number }>;
+  return apiFetch<{ id: number }>(`/api/habits/${id}/restore`, { method: "POST" });
 }
 
 /**

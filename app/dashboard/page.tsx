@@ -561,11 +561,10 @@ export default function Dashboard() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ habitId, updates }),
     })
-      .then((response) => {
-        if (!response.ok) {
-          response.json().then((errorData) => {
-            console.error("Batch API Error:", response.status, errorData);
-          });
+      .then(async (response) => {
+        const json = await response.json();
+        if (!response.ok || !json.success) {
+          console.error("Batch API Error:", response.status, json);
         }
       })
       .catch((e) => {

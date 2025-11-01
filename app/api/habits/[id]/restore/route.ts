@@ -1,9 +1,9 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { habits } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { getOrCreateInternalUser } from "@/lib/user";
+import type { ApiResponse } from "@/types";
 
 /**
  * POST /api/habits/[id]/restore - Restaura un hábito archivado
@@ -14,7 +14,13 @@ export async function POST(
 ) {
   // Verificar autenticación del usuario
   const { userId } = await auth();
-  if (!userId) return new Response("Unauthorized", { status: 401 });
+  if (!userId) {
+    const response: ApiResponse = {
+      success: false,
+      error: "Unauthorized",
+    };
+    return Response.json(response, { status: 401 });
+  }
 
   // Obtener información del usuario actual desde Clerk
   const u = await currentUser();
@@ -36,5 +42,9 @@ export async function POST(
     ));
 
   // Retornar respuesta exitosa
-  return NextResponse.json({ ok: true, id: habitId });
+  const response: ApiResponse<{ id: number }> = {
+    success: true,
+    data: { id: habitId },
+  };
+  return Response.json(response);
 }

@@ -16,7 +16,7 @@
 import { useCallback, useRef } from "react";
 import { retryWithBackoff } from "@/lib/retryUtils";
 import { operationQueue } from "@/lib/operationQueue";
-import type { Habit } from "@/types";
+import type { Habit, ApiResponse } from "@/types";
 
 type CheckinState = Record<string, Record<string, number>>;
 type CheckinCache = {
@@ -141,12 +141,13 @@ export function useCheckin({
                   }),
                 });
 
-                if (!response.ok) {
-                  const error = await response.json().catch(() => ({ error: "Unknown error" }));
-                  throw new Error(error.error || `HTTP ${response.status}`);
+                const json = await response.json() as ApiResponse;
+
+                if (!response.ok || !json.success) {
+                  throw new Error(json.error || `HTTP ${response.status}`);
                 }
 
-                return response.json();
+                return json;
               },
               { maxRetries: 3 }
             );

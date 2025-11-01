@@ -61,13 +61,29 @@ export type GetAnalyticsParams = {
   to?: ISODate;
 };
 
-// Genérico para manejar respuestas enriquecidas
-export type ApiResponse<T> = {
+// ============= API RESPONSES (NORMALIZED) =============
+/**
+ * Standard API response shape - ALL endpoints should use this
+ */
+export type ApiResponse<T = unknown> = {
+  success: boolean;
+  data?: T;
+  error?: string;
+};
+
+/**
+ * Legacy response format (to be migrated)
+ * @deprecated Use ApiResponse instead
+ */
+export type LegacyApiResponse<T> = {
   ok: boolean;
   data: T;
   message?: string;
 };
 
+/**
+ * @deprecated Use ApiResponse<{id: number; hard: boolean}> instead
+ */
 export type DeleteHabitResponse = { ok: boolean; id: number; hard: boolean };
 
 // Tipo para actualizar un hábito (todos los campos opcionales)

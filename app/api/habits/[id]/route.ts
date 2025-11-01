@@ -5,6 +5,7 @@ import { habits, checkins } from "@/db/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { getOrCreateInternalUser } from "@/lib/user";
 import { z } from "zod";
+import type { ApiResponse, Habit } from "@/types";
 
 /**
  * DELETE /api/habits/[id] - Elimina un hábito (soft o hard delete)
@@ -16,7 +17,13 @@ export async function DELETE(
 ) {
   // Verificar autenticación del usuario
   const { userId } = await auth();
-  if (!userId) return new Response("Unauthorized", { status: 401 });
+  if (!userId) {
+    const response: ApiResponse = {
+      success: false,
+      error: "Unauthorized",
+    };
+    return Response.json(response, { status: 401 });
+  }
 
   // Obtener información del usuario actual desde Clerk
   const u = await currentUser();
@@ -32,7 +39,13 @@ export async function DELETE(
   // Convertir el ID del hábito de string a número
   const habitId = Number(id);
   // Validar que el ID sea un número válido
-  if (Number.isNaN(habitId)) return new Response("Bad Request", { status: 400 });
+  if (Number.isNaN(habitId)) {
+    const response: ApiResponse = {
+      success: false,
+      error: "Bad Request",
+    };
+    return Response.json(response, { status: 400 });
+  }
 
   // Determinar si es eliminación hard (permanente) o soft (archivado)
   // Por defecto es soft delete (solo marca como archivado)
@@ -49,7 +62,13 @@ export async function DELETE(
     .limit(1);
 
   // Si el hábito no existe o no pertenece al usuario, retornar error 403
-  if (owns.length === 0) return new Response("Forbidden", { status: 403 });
+  if (owns.length === 0) {
+    const response: ApiResponse = {
+      success: false,
+      error: "Forbidden",
+    };
+    return Response.json(response, { status: 403 });
+  }
 
   if (hard) {
     // Hard delete: eliminación permanente de la base de datos
@@ -69,7 +88,11 @@ export async function DELETE(
   }
 
   // Retornar respuesta exitosa con detalles de la operación
-  return Response.json({ ok: true, id: habitId, hard });
+  const response: ApiResponse<{ id: number; hard: boolean }> = {
+    success: true,
+    data: { id: habitId, hard },
+  };
+  return Response.json(response);
 }
 
 /**
@@ -82,7 +105,13 @@ export async function PATCH(
 ) {
   // Obtener userId de la sesión autenticada de Clerk
   const { userId } = await auth();
-  if (!userId) return new Response("Unauthorized", { status: 401 });
+  if (!userId) {
+    const response: ApiResponse = {
+      success: false,
+      error: "Unauthorized",
+    };
+    return Response.json(response, { status: 401 });
+  }
 
   // Obtener el usuario interno de la BD
   const me = await getOrCreateInternalUser(userId);
@@ -93,7 +122,11 @@ export async function PATCH(
 
   // Validar que el ID sea un número válido
   if (Number.isNaN(habitId)) {
-    return new Response("Invalid habit ID", { status: 400 });
+    const response: ApiResponse = {
+      success: false,
+      error: "Invalid habit ID",
+    };
+    return Response.json(response, { status: 400 });
   }
 
   // Definir esquema de validación con Zod
@@ -116,10 +149,11 @@ export async function PATCH(
 
   // Si la validación falla, retornar error 400
   if (!parsed.success) {
-    return Response.json(
-      { error: "Invalid input", details: parsed.error.format() },
-      { status: 400 }
-    );
+    const response: ApiResponse = {
+      success: false,
+      error: "Invalid input",
+    };
+    return Response.json(response, { status: 400 });
   }
 
   // Buscar el hábito en la base de datos
@@ -129,12 +163,20 @@ export async function PATCH(
 
   // Si el hábito no existe, retornar 404
   if (!habit) {
-    return new Response("Habit not found", { status: 404 });
+    const response: ApiResponse = {
+      success: false,
+      error: "Habit not found",
+    };
+    return Response.json(response, { status: 404 });
   }
 
   // Verificar que el hábito pertenezca al usuario actual (ownership check)
   if (habit.userId !== me.id) {
-    return new Response("Forbidden", { status: 403 });
+    const response: ApiResponse = {
+      success: false,
+      error: "Forbidden",
+    };
+    return Response.json(response, { status: 403 });
   }
 
   // Si se está cambiando el título, verificar que no exista otro hábito activo con el mismo nombre
@@ -150,10 +192,11 @@ export async function PATCH(
 
     // Si existe otro hábito con el mismo título (y no es el actual), retornar error
     if (existing && existing.id !== habitId) {
-      return Response.json(
-        { error: "Ya tienes un hábito activo con ese nombre" },
-        { status: 409 }
-      );
+      const response: ApiResponse = {
+        success: false,
+        error: "Ya tienes un hábito activo con ese nombre",
+      };
+      return Response.json(response, { status: 409 });
     }
 
     // Actualizar con título trimmed
@@ -171,5 +214,9 @@ export async function PATCH(
     .returning();
 
   // Retornar el hábito actualizado
-  return Response.json(updated);
+  const response: ApiResponse<Habit> = {
+    success: true,
+    data: updated as Habit,
+  };
+  return Response.json(response);
 }

@@ -14,6 +14,8 @@ import { getOrCreateInternalUser } from "@/lib/user";
 import { eachDayOfInterval, parseISO, format } from "date-fns";
 // Importar función para obtener la fecha actual en la zona horaria del usuario
 import { getTodayInTZ } from "@/lib/dateHelpers";
+// Importar tipo para respuestas normalizadas
+import type { ApiResponse } from "@/types";
 
 // Definir esquema de validación para el body de la petición POST
 const Body = z.object({
@@ -40,10 +42,11 @@ export async function POST(req: Request) {
 
   // Si la validación falla, retornar error 400
   if (!parsed.success) {
-    return Response.json(
-      { error: "Invalid input", details: parsed.error.format() },
-      { status: 400 }
-    );
+    const response: ApiResponse = {
+      success: false,
+      error: "Invalid input",
+    };
+    return Response.json(response, { status: 400 });
   }
 
   const { habitId, note } = parsed.data;
@@ -59,14 +62,20 @@ export async function POST(req: Request) {
 
   // Si el hábito no existe, retornar 404
   if (!habit) {
-    return new Response("Habit not found", { status: 404 });
+    const response: ApiResponse = {
+      success: false,
+      error: "Habit not found",
+    };
+    return Response.json(response, { status: 404 });
   }
 
   // Verificar que el hábito pertenece al usuario actual (authorization check)
   if (habit.userId !== me.id) {
-    return new Response("Forbidden: habit does not belong to user", {
-      status: 403,
-    });
+    const response: ApiResponse = {
+      success: false,
+      error: "Forbidden: habit does not belong to user",
+    };
+    return Response.json(response, { status: 403 });
   }
 
   // Insertar el check-in en la base de datos
@@ -95,7 +104,12 @@ export async function POST(req: Request) {
     })
     .returning();
 
-  return Response.json({ id: inserted.id, count: inserted.count });
+  const response: ApiResponse<{ id: number; count: number }> = {
+    success: true,
+    data: { id: inserted.id, count: inserted.count ?? 1 },
+  };
+
+  return Response.json(response);
 }
 
 /**
@@ -106,7 +120,13 @@ export async function GET(req: Request) {
   // Obtener el userId de la sesión autenticada de Clerk
   const { userId } = await auth();
   // Si no hay usuario autenticado, retornar error 401
-  if (!userId) return new Response("Unauthorized", { status: 401 });
+  if (!userId) {
+    const response: ApiResponse = {
+      success: false,
+      error: "Unauthorized",
+    };
+    return Response.json(response, { status: 401 });
+  }
 
   // Obtener información completa del usuario actual desde Clerk
   const u = await currentUser();
@@ -158,7 +178,12 @@ export async function GET(req: Request) {
   }
 
   // Retornar el rango de fechas y los datos acumulados
-  return Response.json({ from, to, data: counts });
+  const response: ApiResponse<{ from: string; to: string; data: Record<string, number> }> = {
+    success: true,
+    data: { from, to, data: counts },
+  };
+
+  return Response.json(response);
 }
 
 /**
@@ -168,7 +193,13 @@ export async function GET(req: Request) {
 export async function PATCH(req: Request) {
   // Obtener el userId de la sesión autenticada de Clerk
   const { userId } = await auth();
-  if (!userId) return new Response("Unauthorized", { status: 401 });
+  if (!userId) {
+    const response: ApiResponse = {
+      success: false,
+      error: "Unauthorized",
+    };
+    return Response.json(response, { status: 401 });
+  }
 
   // Obtener el usuario interno de la base de datos
   const me = await getOrCreateInternalUser(userId);
@@ -184,10 +215,11 @@ export async function PATCH(req: Request) {
   const parsed = schema.safeParse(body);
 
   if (!parsed.success) {
-    return Response.json(
-      { error: "Invalid input", details: parsed.error.format() },
-      { status: 400 }
-    );
+    const response: ApiResponse = {
+      success: false,
+      error: "Invalid input",
+    };
+    return Response.json(response, { status: 400 });
   }
 
   const { habitId, date, count } = parsed.data;
@@ -198,13 +230,19 @@ export async function PATCH(req: Request) {
   });
 
   if (!habit) {
-    return new Response("Habit not found", { status: 404 });
+    const response: ApiResponse = {
+      success: false,
+      error: "Habit not found",
+    };
+    return Response.json(response, { status: 404 });
   }
 
   if (habit.userId !== me.id) {
-    return new Response("Forbidden: habit does not belong to user", {
-      status: 403,
-    });
+    const response: ApiResponse = {
+      success: false,
+      error: "Forbidden: habit does not belong to user",
+    };
+    return Response.json(response, { status: 403 });
   }
 
   // Buscar check-in existente
@@ -248,7 +286,12 @@ export async function PATCH(req: Request) {
       .returning();
   }
 
-  return Response.json({ success: true, result });
+  const response: ApiResponse<{ result: unknown }> = {
+    success: true,
+    data: { result },
+  };
+
+  return Response.json(response);
 }
 
 /**
@@ -258,7 +301,13 @@ export async function PATCH(req: Request) {
 export async function PUT(req: Request) {
   // Obtener el userId de la sesión autenticada de Clerk
   const { userId } = await auth();
-  if (!userId) return new Response("Unauthorized", { status: 401 });
+  if (!userId) {
+    const response: ApiResponse = {
+      success: false,
+      error: "Unauthorized",
+    };
+    return Response.json(response, { status: 401 });
+  }
 
   // Obtener el usuario interno de la base de datos
   const me = await getOrCreateInternalUser(userId);
@@ -276,10 +325,11 @@ export async function PUT(req: Request) {
   const parsed = schema.safeParse(body);
 
   if (!parsed.success) {
-    return Response.json(
-      { error: "Invalid input", details: parsed.error.format() },
-      { status: 400 }
-    );
+    const response: ApiResponse = {
+      success: false,
+      error: "Invalid input",
+    };
+    return Response.json(response, { status: 400 });
   }
 
   const { habitId, updates } = parsed.data;
@@ -290,13 +340,19 @@ export async function PUT(req: Request) {
   });
 
   if (!habit) {
-    return new Response("Habit not found", { status: 404 });
+    const response: ApiResponse = {
+      success: false,
+      error: "Habit not found",
+    };
+    return Response.json(response, { status: 404 });
   }
 
   if (habit.userId !== me.id) {
-    return new Response("Forbidden: habit does not belong to user", {
-      status: 403,
-    });
+    const response: ApiResponse = {
+      success: false,
+      error: "Forbidden: habit does not belong to user",
+    };
+    return Response.json(response, { status: 403 });
   }
 
   // Procesar todos los updates
@@ -349,5 +405,10 @@ export async function PUT(req: Request) {
     results.push(result);
   }
 
-  return Response.json({ success: true, count: results.length, results });
+  const response: ApiResponse<{ count: number; results: unknown[] }> = {
+    success: true,
+    data: { count: results.length, results },
+  };
+
+  return Response.json(response);
 }

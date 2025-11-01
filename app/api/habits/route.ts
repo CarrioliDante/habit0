@@ -4,8 +4,8 @@ import { habits } from "@/db/schema";
 import { z } from "zod";
 import { eq, and, sql } from "drizzle-orm";
 import { getOrCreateInternalUser } from "@/lib/user";
-import { NextResponse } from "next/server";
 import { DEFAULT_HABIT_COLOR } from "@/lib/colors";
+import type { ApiResponse, Habit } from "@/types";
 
 // Esquema de validación con Zod para crear un hábito
 const Body = z.object({
@@ -27,7 +27,13 @@ const Body = z.object({
 export async function GET() {
   // Verificar autenticación del usuario
   const { userId } = await auth();
-  if (!userId) return new Response("Unauthorized", { status: 401 });
+  if (!userId) {
+    const response: ApiResponse = {
+      success: false,
+      error: "Unauthorized",
+    };
+    return Response.json(response, { status: 401 });
+  }
 
   // Obtener información del usuario actual desde Clerk
   const u = await currentUser();
@@ -41,7 +47,12 @@ export async function GET() {
     .from(habits)
     .where(eq(habits.userId, me.id));
 
-  return NextResponse.json(rows);
+  const response: ApiResponse<Habit[]> = {
+    success: true,
+    data: rows as Habit[],
+  };
+
+  return Response.json(response);
 }
 
 /**
@@ -50,7 +61,13 @@ export async function GET() {
 export async function POST(req: Request) {
   // Obtener userId de la sesión autenticada de Clerk
   const { userId } = await auth();
-  if (!userId) return new Response("Unauthorized", { status: 401 });
+  if (!userId) {
+    const response: ApiResponse = {
+      success: false,
+      error: "Unauthorized",
+    };
+    return Response.json(response, { status: 401 });
+  }
 
   // Obtener el usuario interno de la base de datos
   const me = await getOrCreateInternalUser(userId);
@@ -61,10 +78,11 @@ export async function POST(req: Request) {
 
   // Si la validación de Zod falla, retornar error 400 con detalles
   if (!parsed.success) {
-    return Response.json(
-      { error: "Invalid input", details: parsed.error.format() },
-      { status: 400 }
-    );
+    const response: ApiResponse = {
+      success: false,
+      error: "Invalid input",
+    };
+    return Response.json(response, { status: 400 });
   }
 
   // Verificar si ya existe un hábito activo con el mismo título (case-insensitive)
@@ -79,10 +97,11 @@ export async function POST(req: Request) {
 
   // Si ya existe, retornar error 409 Conflict
   if (existing) {
-    return Response.json(
-      { error: "Ya tienes un hábito activo con ese nombre" },
-      { status: 409 }
-    );
+    const response: ApiResponse = {
+      success: false,
+      error: "Ya tienes un hábito activo con ese nombre",
+    };
+    return Response.json(response, { status: 409 });
   }
 
   try {
@@ -105,13 +124,18 @@ export async function POST(req: Request) {
       .returning();
 
     // Retornar el hábito creado
-    return Response.json(created);
+    const response: ApiResponse<Habit> = {
+      success: true,
+      data: created as Habit,
+    };
+    return Response.json(response);
   } catch (error: unknown) {
     // Otros errores
     console.error("Error creating habit:", error);
-    return Response.json(
-      { error: "Error al crear el hábito" },
-      { status: 500 }
-    );
+    const response: ApiResponse = {
+      success: false,
+      error: "Error al crear el hábito",
+    };
+    return Response.json(response, { status: 500 });
   }
 }
