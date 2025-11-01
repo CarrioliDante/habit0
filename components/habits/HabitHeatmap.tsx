@@ -114,8 +114,10 @@ const getWeeklyHighlight = (date: Date): 'selected' | 'adjacent' | 'none' => {
     return eachDayOfInterval({ start, end });
   }, [from, to]);
 
-  // Días de la semana para labels
-  const weekDays = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  // Días de la semana para labels (solo mostrar L, M, X, J, V, S, D)
+  const weekDayLabels = useMemo(() => {
+    return ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  }, []);
 
   // Agrupar fechas por semanas (formato GitHub)
   const weeks = useMemo(() => {
@@ -305,7 +307,7 @@ const getWeeklyHighlight = (date: Date): 'selected' | 'adjacent' | 'none' => {
       return { backgroundColor: base, className: "" };
     }
 
-    let intensity = getIntensity(count);
+    const intensity = getIntensity(count);
 
     if (intensity === 0) {
       const base = colorWithAlpha(color || DEFAULT_HABIT_COLOR, darkMode ? 0.06 : 0.08);
@@ -403,87 +405,86 @@ const getWeeklyHighlight = (date: Date): 'selected' | 'adjacent' | 'none' => {
         className={`${!isInModal ? 'overflow-x-auto pb-1' : ''}`}
       >
         <div className={`inline-block min-w-max ${isInModal ? 'pr-8' : ''}`}>
-          {/* Labels de meses en el eje superior - solo en vista month/year si hay múltiples meses */}
-        {(viewMode === 'month' || viewMode === 'year') && monthLabels.length > 1 && (
-          <div className="flex mb-0.5" style={{ paddingLeft: '22px' }}>
-            {monthLabels.map((label, idx) => {
-              // Ajustar cellWidth según modal y viewMode
-              // Para year: w-3 (12px) + gap-0.5 (2px) = 14px por columna
-              // Para month: w-4 (16px) + gap-1 (4px) = 20px por columna
-              const cellWidth = isInModal
-                ? (viewMode === 'year' ? 22 : 24)
-                : (viewMode === 'year' ? 18 : 20);
+          {/* Labels de meses en el eje superior */}
+          {(viewMode === 'month' || viewMode === 'year') && monthLabels.length > 0 && (
+            <div className="flex mb-1.5" style={{ marginLeft: '24px' }}>
+              {monthLabels.map((label, idx) => {
+                // Calcular ancho EXACTO de celda + gap
+                // year: w-[18px] = 18px, gap-1 = 4px → total 22px por columna
+                // month: w-5 = 20px, gap-1 = 4px → total 24px por columna
+                // modal year: w-5 = 20px, gap-1 = 4px → total 24px por columna
+                // modal month: w-6 = 24px, gap-1 = 4px → total 28px por columna
+                const cellWidth = isInModal
+                  ? (viewMode === 'year' ? 24 : 28)
+                  : (viewMode === 'year' ? 22 : 24);
+
+                const nextIndex = idx < monthLabels.length - 1 ? monthLabels[idx + 1].startWeekIndex : displayWeeks.length;
+                const width = (nextIndex - label.startWeekIndex) * cellWidth;
+
+                return (
+                  <div
+                    key={idx}
+                    className={`text-[11px] font-medium ${darkMode ? "text-gray-400" : "text-gray-600"}`}
+                    style={{
+                      marginLeft: idx === 0 ? `${label.startWeekIndex * cellWidth}px` : '0',
+                      width: `${width}px`,
+                      textAlign: 'center'
+                    }}
+                  >
+                    {label.month}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+        <div className="flex gap-2">
+          {/* Eje izquierdo: días de la semana (L-D, todos visibles) */}
+          <div className="flex flex-col gap-1">
+            {weekDayLabels.map((dayLabel) => {
+              // Altura EXACTA matching con las celdas del grid
+              // year: h-[18px], month: h-5 (20px), modal-year: h-[18px], modal-month: h-6 (24px)
+              const height = isInModal
+                ? (viewMode === 'year' ? '18px' : '24px')
+                : (viewMode === 'year' ? '18px' : '20px');
+
               return (
                 <div
-                  key={idx}
-                  className={`text-[10px] ${darkMode ? "text-gray-500" : "text-gray-600"}`}
+                  key={dayLabel}
+                  className={`text-[10px] font-medium flex items-center justify-end ${
+                    darkMode ? 'text-gray-400' : 'text-gray-600'
+                  }`}
                   style={{
-                    marginLeft: idx === 0 ? `${label.startWeekIndex * cellWidth}px` : '0',
-                    width: idx < monthLabels.length - 1
-                      ? `${(monthLabels[idx + 1].startWeekIndex - label.startWeekIndex) * cellWidth}px`
-                      : 'auto'
+                    height: height,
+                    paddingRight: '6px',
+                    minWidth: '16px'
                   }}
                 >
-                  {label.month}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="flex">
-          {/* Eje izquierdo: días de la semana - FIJO con sticky y gradiente */}
-          <div
-            className={`flex flex-col mr-1.5 ${viewMode === 'year' ? 'gap-1' : 'gap-1'} sticky left-0 z-10`}
-            style={{
-              background: darkMode
-                ? 'linear-gradient(to right, #111827 0%, #111827 75%, transparent 100%)'
-                : 'linear-gradient(to right, #ffffff 0%, #ffffff 25%, transparent 100%)',
-              paddingRight: '8px',
-            }}
-            aria-hidden
-          >
-            {weekDays.map((d) => {
-              const size = isInModal
-                ? (viewMode === 'year' ? 'w-5 h-5' : 'w-6 h-6')
-                : (viewMode === 'year' ? 'w-4 h-4' : 'w-5 h-5');
-              const height = isInModal
-                ? (viewMode === 'year' ? '18px' : '20px')
-                : (viewMode === 'year' ? '14px' : '16px');
-
-              return (
-                <div
-                  key={d}
-                  className={`text-[10px] text-center flex items-center justify-center ${size} font-medium ${
-                    darkMode ? 'text-gray-500' : 'text-gray-500'
-                  }`}
-                  style={{ height }}
-                >
-                  {d}
+                  {dayLabel}
                 </div>
               );
             })}
           </div>
 
           {/* Grid semanas */}
-          <div className={`flex ${viewMode === 'year' ? 'gap-1' : 'gap-1'}`}>
+          <div className={`flex gap-1`}>
             {displayWeeks.map((week, weekIndex) => (
-              <div key={weekIndex} className={`flex flex-col ${viewMode === 'year' ? 'gap-1' : 'gap-1'}`}>
+              <div key={weekIndex} className={`flex flex-col gap-1`}>
                 {week.map((date, dayIndex) => {
                   const dateStr = format(date, "yyyy-MM-dd");
                   const count = data[dateStr] || 0;
                   const bgStyle = getBackgroundColor(date);
 
-                  // Ajustar tamaño según si está en modal y viewMode
+                  // Tamaños más grandes para mejor visibilidad
                   const size = isInModal
-                    ? (viewMode === 'year' ? 'w-5 h-5' : 'w-6 h-6')
-                    : (viewMode === 'year' ? 'w-4 h-4' : 'w-5 h-5');
+                    ? (viewMode === 'year' ? 'w-5 h-[18px]' : 'w-6 h-6')
+                    : (viewMode === 'year' ? 'w-[18px] h-[18px]' : 'w-5 h-5');
 
                   return (
                     <div
                       key={dayIndex}
-                      className={`${size} rounded-sm transition-all cursor-pointer hover:ring-2 hover:ring-offset-1 ${
-                        darkMode ? "hover:ring-gray-300" : "hover:ring-gray-400"
+                      className={`${size} rounded transition-all cursor-pointer hover:ring-2 hover:ring-offset-0 ${
+                        darkMode ? "hover:ring-gray-400" : "hover:ring-gray-500"
                       }`}
                       style={{ backgroundColor: bgStyle.backgroundColor }}
                       title={`${format(date, "dd/MM/yyyy", { locale: es })}: ${count} check-in${count !== 1 ? 's' : ''}`}

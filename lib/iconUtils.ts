@@ -77,5 +77,5 @@ export const ICON_CATALOG = [
   "Gift","Trophy","Heart","Sun","Moon","Calendar","Check","Users","Clock","MapPin",
   "Flag","Home","Bell","Camera","ShoppingCart","Laptop","Smartphone","Lightbulb","Seedling","Diamond",
   "Award","FileText","Folder","User","Key","Lock","Play","Pause","RefreshCcw","Settings",
-  "Plus","Minus","Search","Grid","List","Trash","Edit","Link","Globe","Compass","ChevronDown","Bookmark","BellOff","Battery","BatteryCharging","Cloud","Download","Upload",
+  "Plus","Minus","Search","Grid","List","Trash","Edit","Link","Globe","Compass","ChevronDown","Bookmark","BellOff","Battery","BatteryCharging","Cloud","Download","Upload", "Dumbbell",
 ];

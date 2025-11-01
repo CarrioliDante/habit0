@@ -549,9 +549,15 @@ export function HabitCard({
                   aria-label={`${dateStr}: ${dayCount} registro${dayCount === 1 ? "" : "s"}`}
                   aria-pressed={filled}
                 >
-                  <div className="flex flex-col items-center gap-1 leading-none">
+                  <div className="flex flex-col items-center gap-0.5 leading-none">
                     <span
-                      className="text-[10px] font-semibold"
+                      className="text-[9px] font-medium uppercase tracking-wide"
+                      style={{ color: dayNumberColor, opacity: 0.7 }}
+                    >
+                      {format(date, "MMM", { locale: es })}
+                    </span>
+                    <span
+                      className="text-[13px] font-bold"
                       style={{ color: dayNumberColor }}
                     >
                       {format(date, "d")}

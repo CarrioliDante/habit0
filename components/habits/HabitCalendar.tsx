@@ -31,6 +31,16 @@ export function HabitCalendar({
   const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
   const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
 
+  const handlePrevMonth = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    prevMonth();
+  };
+
+  const handleNextMonth = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    nextMonth();
+  };
+
   // Generar días del mes actual (incluye días del mes anterior/siguiente para completar semanas)
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
@@ -45,7 +55,7 @@ export function HabitCalendar({
       {/* Navegación del mes */}
       <div className="flex items-center justify-between mb-4">
         <button
-          onClick={prevMonth}
+          onClick={handlePrevMonth}
           className={`px-3 py-1 rounded ${
             darkMode ? "hover:bg-gray-700" : "hover:bg-gray-200"
           }`}
@@ -57,7 +67,7 @@ export function HabitCalendar({
           {format(currentMonth, "MMMM yyyy", { locale: es })}
         </h3>
         <button
-          onClick={nextMonth}
+          onClick={handleNextMonth}
           className={`px-3 py-1 rounded ${
             darkMode ? "hover:bg-gray-700" : "hover:bg-gray-200"
           }`}

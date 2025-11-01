@@ -6,7 +6,6 @@ import { parseISO, subDays, format as formatDate } from "date-fns";
 import {
   getHabits,
   createHabit as apiCreateHabit,
-  createCheckin,
   getAnalyticsOverview,
   deleteHabit,
   restoreHabit,
@@ -21,6 +20,9 @@ import { DEFAULT_HABIT_COLOR } from "@/lib/colors";
 import { Button } from "@/components/ui/Button";
 import { HabitList } from "@/components/habits/HabitList";
 import { HabitForm } from "@/components/habits/HabitForm";
+import { ToastContainer } from "@/components/ui/Toast";
+import { useToast } from "@/lib/hooks/useToast";
+import { useCheckin } from "@/lib/hooks/useCheckin";
 import * as LucideIcons from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -52,6 +54,9 @@ const CADENCE_FILTERS: Array<{ value: Cadence | "all"; label: string; Icon: Luci
 ];
 
 export default function Dashboard() {
+  // Toast notifications
+  const { toasts, removeToast, success, error: showError, info } = useToast();
+
   // Estado para modo oscuro (activado por defecto para matching con diseño)
   const [darkMode, setDarkMode] = useState(true);
 
@@ -180,6 +185,15 @@ export default function Dashboard() {
       console.error("Error loading metrics:", e);
     }
   }, [dateRange.from, dateRange.to]); // Solo deps necesarias
+
+  // Check-in handling with queue + debouncing
+  const { handleCheckin: handleCheckinOptimized, hasPendingSync } = useCheckin({
+    habitCheckins,
+    setHabitCheckins,
+    checkinsCacheRef,
+    loadMetrics,
+    toast: { success, error: showError, info },
+  });
 
   // // Cargar comparación
   // const loadComparison = useCallback(async () => {
@@ -492,126 +506,20 @@ export default function Dashboard() {
   };
 
   const handleCheckin = async (habitId: number) => {
-    // Buscar el hábito para saber los límites
+    // Buscar el hábito
     const habit = habits.find(h => h.id === habitId);
-    if (!habit) return;
+    if (!habit) {
+      showError("Hábito no encontrado");
+      return;
+    }
 
-    // Usar fecha local (no UTC)
+    // Calcular fecha actual (local, no UTC)
     const now = new Date();
     const pad = (n: number) => n.toString().padStart(2, "0");
     const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 
-    // Leer el estado actual para decidir acción
-    const currentCount = (habitCheckins[habitId] || {})[todayStr] || 0;
-
-    // Si permite múltiples por día
-    if (habit.allowMultiplePerDay) {
-      const maxCount = habit.targetPerDay || 1;
-
-      if (currentCount < maxCount) {
-        // Incrementar optimísticamente
-        const nextCount = currentCount + 1;
-        setHabitCheckins((prev) => {
-          const prevCheckins = prev[habitId] || {};
-          return {
-            ...prev,
-            [habitId]: {
-              ...prevCheckins,
-              [todayStr]: nextCount,
-            },
-          };
-        });
-        const cacheEntry = checkinsCacheRef.current[habitId];
-        if (cacheEntry) {
-          cacheEntry.data[todayStr] = nextCount;
-          if (todayStr < cacheEntry.from) cacheEntry.from = todayStr;
-          if (todayStr > cacheEntry.to) cacheEntry.to = todayStr;
-        } else {
-          checkinsCacheRef.current[habitId] = {
-            from: todayStr,
-            to: todayStr,
-            data: { [todayStr]: nextCount },
-          };
-        }
-
-        // Persistir incremento
-        try {
-          await createCheckin({ habitId });
-          await loadMetrics();
-        } catch (e: unknown) {
-          console.error("Error in handleCheckin (increment):", e);
-          setErr(e instanceof Error ? e.message : "Error al registrar check-in");
-        }
-      } else {
-        // currentCount >= maxCount -> reset to 0 (both local and server)
-        setHabitCheckins((prev) => {
-          const prevCheckins = prev[habitId] || {};
-          return {
-            ...prev,
-            [habitId]: {
-              ...prevCheckins,
-              [todayStr]: 0,
-            },
-          };
-        });
-        const cacheEntry = checkinsCacheRef.current[habitId];
-        if (cacheEntry) {
-          cacheEntry.data[todayStr] = 0;
-        }
-
-        // Persistir reset (usar endpoint PUT similar a batch update)
-        try {
-          await fetch("/api/checkins", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ habitId, updates: [{ date: todayStr, count: 0 }] }),
-          });
-          await loadMetrics();
-        } catch (e: unknown) {
-          console.error("Error in handleCheckin (reset):", e);
-          setErr(e instanceof Error ? e.message : "Error al resetear check-in");
-        }
-      }
-    } else {
-      // No permite múltiples: alternar 0/1
-      const newVal = currentCount > 0 ? 0 : 1;
-      setHabitCheckins((prev) => ({
-        ...prev,
-        [habitId]: {
-          ...(prev[habitId] || {}),
-          [todayStr]: newVal,
-        },
-      }));
-      const cacheEntry = checkinsCacheRef.current[habitId];
-      if (cacheEntry) {
-        cacheEntry.data[todayStr] = newVal;
-        if (todayStr < cacheEntry.from) cacheEntry.from = todayStr;
-        if (todayStr > cacheEntry.to) cacheEntry.to = todayStr;
-      } else {
-        checkinsCacheRef.current[habitId] = {
-          from: todayStr,
-          to: todayStr,
-          data: { [todayStr]: newVal },
-        };
-      }
-
-      try {
-        // For single toggle, still use createCheckin to mark; if toggling off, send PUT reset
-        if (newVal === 1) {
-          await createCheckin({ habitId });
-        } else {
-          await fetch("/api/checkins", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ habitId, updates: [{ date: todayStr, count: 0 }] }),
-          });
-        }
-        await loadMetrics();
-      } catch (e: unknown) {
-        console.error("Error in handleCheckin (toggle):", e);
-        setErr(e instanceof Error ? e.message : "Error al registrar check-in");
-      }
-    }
+    // Delegar al hook optimizado (con queue + debouncing)
+    await handleCheckinOptimized(habit, todayStr);
   };
 
   // Nueva función para batch updates (mucho más rápido para múltiples cambios)
@@ -1040,6 +948,9 @@ export default function Dashboard() {
           isModal
         />
       )}
+
+      {/* Toast notifications */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }
