@@ -29,6 +29,13 @@
       "when": 1761676378556,
       "tag": "0003_deep_vindicator",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1762459853018,
+      "tag": "0004_shiny_praxagora",
+      "breakpoints": true
     }
   ]
 }

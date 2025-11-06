@@ -77,3 +77,50 @@ export const checkins = pgTable("checkins", {
   // Índice adicional para búsquedas por habitId (usado frecuentemente)
   index("idx_checkins_habit").on(table.habitId),
 ]);
+
+// Definir la tabla "groups" para organizar hábitos en rutinas
+export const groups = pgTable("groups", {
+  // Columna id: entero autoincremental que sirve como clave primaria
+  id: serial("id").primaryKey(),
+  // Columna userId: referencia al usuario propietario del grupo, obligatorio
+  userId: integer("user_id").notNull().references(() => users.id),
+  // Columna name: nombre del grupo/rutina, obligatorio
+  name: varchar("name", { length: 256 }).notNull(),
+  // Columna description: descripción opcional del grupo
+  description: text("description"),
+  // Columna color: color para identificar visualmente el grupo
+  color: varchar("color", { length: 16 }).default("#3b82f6"),
+  // Columna icon: icono opcional para el grupo
+  icon: varchar("icon", { length: 32 }).default("Folder"),
+  // Columna daysOfWeek: días de la semana para este grupo (JSON array: [0-6], 0=domingo)
+  // Almacenado como string JSON: "[1,3,5]" = lunes, miércoles, viernes
+  daysOfWeek: varchar("days_of_week", { length: 32 }).default("[]"),
+  // Columna order: orden de visualización del grupo
+  order: integer("order").default(0),
+  // Columna isArchived: si el grupo está archivado
+  isArchived: boolean("is_archived").default(false),
+  // Columna createdAt: timestamp de cuándo se creó el grupo
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("idx_groups_user").on(table.userId),
+  index("idx_groups_archived").on(table.isArchived),
+]);
+
+// Definir la tabla "habit_groups" para la relación many-to-many entre habits y groups
+export const habitGroups = pgTable("habit_groups", {
+  // Columna id: entero autoincremental que sirve como clave primaria
+  id: serial("id").primaryKey(),
+  // Columna habitId: referencia al hábito
+  habitId: integer("habit_id").notNull().references(() => habits.id, { onDelete: "cascade" }),
+  // Columna groupId: referencia al grupo
+  groupId: integer("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
+  // Columna order: orden del hábito dentro del grupo
+  order: integer("order").default(0),
+  // Columna createdAt: timestamp de cuándo se agregó el hábito al grupo
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  // Garantizar que un hábito no se agregue dos veces al mismo grupo
+  unique("unique_habit_per_group").on(table.habitId, table.groupId),
+  index("idx_habit_groups_habit").on(table.habitId),
+  index("idx_habit_groups_group").on(table.groupId),
+]);

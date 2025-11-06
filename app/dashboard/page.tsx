@@ -23,6 +23,7 @@ import { HabitForm } from "@/components/habits/HabitForm";
 import { ToastContainer } from "@/components/ui/Toast";
 import { useToast } from "@/lib/hooks/useToast";
 import { useCheckin } from "@/lib/hooks/useCheckin";
+import { UserButton } from "@clerk/nextjs";
 import {
   getCachedHabits,
   cacheHabits,
@@ -31,6 +32,7 @@ import {
   invalidateCheckinsCache,
   getLocalCheckinsForHabit,
   saveLocalCheckin,
+  markCheckinAsSynced,
 } from "@/lib/localCache";
 import * as LucideIcons from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -656,6 +658,11 @@ export default function Dashboard() {
       checkinsCacheRef.current[habitId] = { from, to, data };
     }
 
+    // 🔥 PERSISTIR EN LOCALSTORAGE (offline-first)
+    updates.forEach(({ date, count }) => {
+      saveLocalCheckin(habitId, date, count, false); // false = not synced yet
+    });
+
     // Persistir todos en una sola llamada en background
     fetch("/api/checkins", {
       method: "PUT",
@@ -666,6 +673,11 @@ export default function Dashboard() {
         const json = await response.json();
         if (!response.ok || !json.success) {
           console.error("Batch API Error:", response.status, json);
+        } else {
+          // ✅ Marcar como sincronizados después de éxito
+          updates.forEach(({ date }) => {
+            markCheckinAsSynced(habitId, date);
+          });
         }
       })
       .catch((e) => {
@@ -797,6 +809,37 @@ export default function Dashboard() {
         : "bg-gradient-to-br from-white via-gray-50 to-white"
     }`}>
       <div className="max-w-6xl mx-auto px-4 py-6">
+        {/* Header con UserButton y Dark Mode */}
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-3">
+            <h1
+              className={`text-2xl font-bold ${
+                darkMode ? "text-white" : "text-gray-900"
+              }`}
+            >
+              Habit<span className="text-blue-500">0</span>
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Dark Mode Toggle */}
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              className={`p-2 rounded-lg transition-colors ${
+                darkMode
+                  ? "bg-gray-800/50 text-gray-300 hover:bg-gray-700/50"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+              aria-label="Toggle dark mode"
+            >
+              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+
+            {/* User Button from Clerk */}
+            <UserButton afterSignOutUrl="/" />
+          </div>
+        </div>
+
         {/* Error message */}
         {err && (
           <div
@@ -1023,18 +1066,6 @@ export default function Dashboard() {
         +
       </button>
       )}
-
-      {/* Botón flotante para cambiar tema - inferior izquierda */}
-      <button
-        onClick={() => setDarkMode(!darkMode)}
-        className={`fixed bottom-6 left-6 w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-xl transition-all hover:scale-110 ${
-          darkMode ? "bg-gray-800 hover:bg-gray-700 text-yellow-400" : "bg-gray-200 hover:bg-gray-300 text-gray-700"
-        }`}
-        title="Cambiar tema"
-        aria-label={darkMode ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-      >
-        {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-      </button>
 
       {/* Modal para crear hábito */}
       {showCreateModal && (

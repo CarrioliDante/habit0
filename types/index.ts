@@ -14,6 +14,32 @@ export type Habit = {
   isArchived?: boolean; // Indica si el hábito está archivado (soft delete)
 };
 
+export type Group = {
+  id: number;
+  userId: number;
+  name: string;
+  description?: string | null;
+  color?: string; // Color en formato hex
+  icon?: string; // Nombre del icono lucide
+  daysOfWeek: number[]; // Array de días [0-6], 0=domingo
+  order: number; // Orden de visualización
+  isArchived?: boolean;
+  createdAt?: string;
+};
+
+export type HabitGroup = {
+  id: number;
+  habitId: number;
+  groupId: number;
+  order: number;
+  createdAt?: string;
+};
+
+// Tipo para grupo con sus hábitos (para UI)
+export type GroupWithHabits = Group & {
+  habits: Habit[];
+};
+
 // ============= ANALYTICS =============
 export type Metrics = {
   range: { from: ISODate; to: ISODate };
@@ -59,6 +85,22 @@ export type GetCheckinsResponse = {
 export type GetAnalyticsParams = {
   from?: ISODate;
   to?: ISODate;
+};
+
+export type CreateGroupRequest = {
+  name: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  daysOfWeek?: number[]; // [0-6], 0=domingo
+  order?: number;
+};
+
+export type UpdateGroupRequest = Partial<CreateGroupRequest>;
+
+export type AddHabitToGroupRequest = {
+  habitId: number;
+  order?: number;
 };
 
 // ============= API RESPONSES (NORMALIZED) =============
