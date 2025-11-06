@@ -1,6 +1,6 @@
 "use client";
-import { useState } from "react";
-import type { Cadence, Habit } from "@/types";
+import { useState, useEffect } from "react";
+import type { Cadence, Habit, Group } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { IconPicker } from "@/components/ui/IconPicker";
 import * as LucideIcons from "lucide-react";
@@ -19,11 +19,13 @@ interface HabitFormProps {
     icon?: string;
     color?: string;
     allowMultiplePerDay?: boolean;
+    groupIds?: number[];
   }) => Promise<void> | void;
   onCancel?: () => void;
   loading: boolean;
   darkMode: boolean;
   isModal?: boolean;
+  groups?: Group[]; // Grupos pre-cargados desde el padre
 }
 
 /**
@@ -36,6 +38,7 @@ export function HabitForm({
   loading,
   darkMode,
   isModal = false,
+  groups: propGroups,
 }: HabitFormProps) {
   const [title, setTitle] = useState(habit?.title || "");
   const [description, setDescription] = useState(habit?.description || "");
@@ -44,6 +47,67 @@ export function HabitForm({
   const [color, setColor] = useState(habit?.color || DEFAULT_HABIT_COLOR);
   const [allowMultiplePerDay, setAllowMultiplePerDay] = useState(habit?.allowMultiplePerDay || false);
   const [targetPerDay, setTargetPerDay] = useState(habit?.targetPerDay || 1);
+
+  // Estado para grupos
+  const [groups, setGroups] = useState<Group[]>(propGroups || []);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(!propGroups);
+
+  // Cargar grupos disponibles solo si no se pasaron como prop
+  useEffect(() => {
+    if (propGroups) {
+      setGroups(propGroups);
+      setLoadingGroups(false);
+      return;
+    }
+
+    const loadGroups = async () => {
+      try {
+        setLoadingGroups(true);
+        const response = await fetch("/api/groups");
+        if (response.ok) {
+          const json = await response.json();
+          if (json.success && json.data) {
+            setGroups(json.data);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading groups:", error);
+      } finally {
+        setLoadingGroups(false);
+      }
+    };
+    loadGroups();
+  }, [propGroups]);
+
+  // Cargar grupos del hábito si estamos editando
+  useEffect(() => {
+    if (habit?.id) {
+      const loadHabitGroups = async () => {
+        try {
+          const response = await fetch(`/api/habits/${habit.id}/groups`);
+          if (response.ok) {
+            const json = await response.json();
+            if (json.success && json.data) {
+              const groupIds = (json.data as Group[]).map(g => g.id);
+              setSelectedGroupIds(groupIds);
+            }
+          }
+        } catch (error) {
+          console.error("Error loading habit groups:", error);
+        }
+      };
+      loadHabitGroups();
+    }
+  }, [habit?.id]);
+
+  const toggleGroup = (groupId: number) => {
+    setSelectedGroupIds(prev =>
+      prev.includes(groupId)
+        ? prev.filter(id => id !== groupId)
+        : [...prev, groupId]
+    );
+  };
 
   const handleSubmit = async () => {
     if (!title.trim()) return;
@@ -56,6 +120,7 @@ export function HabitForm({
       icon,
       color,
       allowMultiplePerDay,
+      groupIds: selectedGroupIds,
     });
 
     // Limpiar form solo si no es modal (es creación)
@@ -67,6 +132,7 @@ export function HabitForm({
       setColor(DEFAULT_HABIT_COLOR);
       setAllowMultiplePerDay(false);
       setTargetPerDay(1);
+      setSelectedGroupIds([]);
     }
   };
 
@@ -250,6 +316,53 @@ export function HabitForm({
               veces por día (al llegar a esta meta, se reinicia a 0)
             </span>
           </div>
+        </div>
+      )}
+
+      {/* Selector de grupos */}
+      {groups.length > 0 && (
+        <div>
+          <label
+            className={`block text-sm font-medium mb-2 ${
+              darkMode ? "text-gray-300" : "text-gray-700"
+            }`}
+          >
+            Grupos (opcional)
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {groups.map((group) => {
+              const isSelected = selectedGroupIds.includes(group.id);
+              const Icons = LucideIcons as unknown as Record<string, unknown>;
+              const IconComponent = Icons[normalizeIconValue(group.icon || "Tag")] as ComponentType<{ size?: number; className?: string }> | undefined;
+              const Icon = IconComponent || LucideIcons.Tag;
+
+              return (
+                <button
+                  key={group.id}
+                  type="button"
+                  onClick={() => toggleGroup(group.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                    isSelected
+                      ? darkMode
+                        ? "bg-white/20 text-white ring-2 ring-white/30"
+                        : "bg-gray-900/10 text-gray-900 ring-2 ring-gray-900/20"
+                      : darkMode
+                      ? "bg-gray-700/50 text-gray-300 hover:bg-gray-700"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                  style={isSelected ? { backgroundColor: `${group.color}30`, borderColor: group.color } : undefined}
+                >
+                  <Icon size={14} style={{ color: group.color }} />
+                  <span>{group.name}</span>
+                </button>
+              );
+            })}
+          </div>
+          {selectedGroupIds.length > 0 && (
+            <p className={`mt-2 text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+              {selectedGroupIds.length} {selectedGroupIds.length === 1 ? "grupo seleccionado" : "grupos seleccionados"}
+            </p>
+          )}
         </div>
       )}
 

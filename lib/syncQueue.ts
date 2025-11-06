@@ -96,7 +96,10 @@ export function failSyncOperation(operationId: string, error: string): void {
 
     // Si superó max retries, remover de cola (perdido)
     if (operation.retries >= MAX_RETRIES) {
-      console.error(`Operation ${operationId} failed after ${MAX_RETRIES} retries:`, error);
+      // Silenciosamente eliminar operaciones que fallaron muchas veces
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(`Operation ${operationId} failed after ${MAX_RETRIES} retries:`, error);
+      }
       const filtered = queue.filter((op) => op.id !== operationId);
       saveSyncQueue(filtered);
     } else {

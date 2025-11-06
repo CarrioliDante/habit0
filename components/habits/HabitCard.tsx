@@ -7,7 +7,7 @@ import { format, parseISO, eachDayOfInterval, startOfWeek, endOfWeek } from "dat
 import { es } from "date-fns/locale";
 import { normalizeIconValue } from "@/lib/iconUtils";
 import { DEFAULT_HABIT_COLOR } from "@/lib/colors";
-import { Habit } from "@/types";
+import { Habit, Group } from "@/types";
 import { HabitHeatmap } from "./HabitHeatmap";
 import { HabitDetailModal } from "./HabitDetailModal";
 import { HabitCalendar } from "./HabitCalendar";
@@ -19,11 +19,14 @@ interface HabitCardProps {
   dateRange: { from: string; to: string };
   viewMode?: "default" | "week" | "month";
   darkMode: boolean;
+  groups?: Group[]; // Grupos a los que pertenece el hábito
+  allGroups?: Group[]; // Todos los grupos disponibles
   onCheckin: (habitId: number) => void;
   onEdit: (habit: Habit) => void;
   onArchive: (habitId: number) => void;
   onDelete: (habitId: number) => void;
   onBatchUpdateCheckins: (habitId: number, updates: Array<{ date: string; count: number }>) => void;
+  onGroupsChange?: () => void; // Callback cuando cambian los grupos
   loading: boolean;
 }
 
@@ -37,11 +40,14 @@ export function HabitCard({
   dateRange,
   viewMode = "default",
   darkMode,
+  groups = [],
+  allGroups = [],
   onCheckin,
   onEdit,
   onArchive,
   onDelete,
   onBatchUpdateCheckins,
+  onGroupsChange,
   loading,
 }: HabitCardProps) {
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -306,71 +312,89 @@ export function HabitCard({
   return (
     <>
       <div
-        className={`rounded-2xl overflow-hidden transition-all cursor-pointer ${
+        className={`rounded-xl sm:rounded-2xl overflow-hidden transition-all cursor-pointer ${
           darkMode
-            ? "bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 shadow-2xl shadow-black/30 hover:border-gray-600/50"
-            : "bg-white border border-gray-200 shadow-lg shadow-gray-200/60 hover:border-gray-300"
+            ? "bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 shadow-xl sm:shadow-2xl shadow-black/30 hover:border-gray-600/50"
+            : "bg-white border border-gray-200 shadow-md sm:shadow-lg shadow-gray-200/60 hover:border-gray-300"
         }`}
         onClick={() => setShowDetailModal(true)}
       >
-      {/* Header con icono, título y botón de check */}
+      {/* Header con icono, título y botón de check - responsive */}
       <div
-        className={`p-4 flex ${
+        className={`p-3 sm:p-4 flex ${
           viewMode === "week"
-            ? "items-center gap-3"
-            : "items-start justify-between gap-3"
+            ? "items-center gap-2 sm:gap-3"
+            : "items-start justify-between gap-2 sm:gap-3"
         }`}
       >
-        {/* Icono circular con color del hábito */}
+        {/* Icono circular con color del hábito - responsive */}
         <div
-          className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 shadow-sm"
+          className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center text-xl sm:text-2xl shrink-0 shadow-sm"
           style={{ backgroundColor: hex }}
         >
-          {HabitIcon ? <HabitIcon size={20} /> : StarFallback ? <StarFallback size={20} /> : null}
+          {HabitIcon ? <HabitIcon size={18} /> : StarFallback ? <StarFallback size={18} /> : null}
         </div>
 
-        {/* Título y descripción */}
+        {/* Título y descripción - responsive */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             <h3
-              className={`font-semibold text-base ${
+              className={`font-semibold text-sm sm:text-base ${
                 darkMode ? "text-gray-50" : "text-gray-900"
               }`}
             >
               {habit.title}
             </h3>
 
-            {/* Badge de cadencia */}
+            {/* Badge de cadencia - responsive */}
             <span
-              className={`text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wide ${
+              className={`text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-medium uppercase tracking-wide ${
                 darkMode ? "bg-gray-700 text-gray-300" : "bg-gray-100 text-gray-600"
               }`}
             >
               <CadenceIcon
-                size={12}
-                className="inline-block mr-1 align-middle"
+                size={10}
+                className="inline-block mr-0.5 sm:mr-1 align-middle sm:w-3 sm:h-3"
               />
-              {cadenceBadge.label}
+              <span className="hidden xs:inline">{cadenceBadge.label}</span>
             </span>
+
+            {/* Badges de grupos - responsive */}
+            {groups.map((group) => {
+              const GroupIcon = (Icons[normalizeIconValue(group.icon || "Tag")] || Icons.Tag) as unknown as ComponentType<{ size?: number; className?: string }>;
+              return (
+                <span
+                  key={group.id}
+                  className="text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-medium flex items-center gap-0.5 sm:gap-1"
+                  style={{
+                    backgroundColor: `${group.color}30`,
+                    color: group.color
+                  }}
+                >
+                  <GroupIcon size={9} className="inline-block sm:w-2.5 sm:h-2.5" />
+                  <span className="hidden xs:inline">{group.name}</span>
+                </span>
+              );
+            })}
 
             {streak > 0 && (
               <span
-                className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-medium ${
                   darkMode ? "text-white" : "text-gray-900"
                 }`}
                 style={{
-                  backgroundColor: `${(habit.color || DEFAULT_HABIT_COLOR)}30`, // 30 = 20% opacity in hex
+                  backgroundColor: `${(habit.color || DEFAULT_HABIT_COLOR)}30`,
                   color: habit.color || DEFAULT_HABIT_COLOR
                 }}
               >
-                <Flame size={12} className="inline-block mr-1 align-middle" />
+                <Flame size={10} className="inline-block mr-0.5 sm:mr-1 align-middle sm:w-3 sm:h-3" />
                 {streak}
               </span>
             )}
           </div>
           {habit.description && (
             <p
-              className={`text-xs mt-1 line-clamp-1 ${
+              className={`text-[11px] sm:text-xs mt-1 line-clamp-1 ${
                 darkMode ? "text-gray-400" : "text-gray-700"
               }`}
             >
@@ -379,7 +403,7 @@ export function HabitCard({
           )}
         </div>
 
-        {/* Botón de Check grande - esquina superior derecha (oculto en vista semanal) */}
+        {/* Botón de Check grande - esquina superior derecha (oculto en vista semanal) - responsive */}
         {viewMode !== "week" && (
           habit.cadence === "weekly" ? (
             <button
@@ -389,7 +413,7 @@ export function HabitCard({
                 if (!alreadyCheckedWeek) onCheckin(habit.id);
               }}
               disabled={loading || alreadyCheckedWeek}
-              className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl font-bold shrink-0 transition-all shadow-md ${
+              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center text-xl sm:text-2xl font-bold shrink-0 transition-all shadow-md ${
                 loading || alreadyCheckedWeek
                   ? "opacity-50 cursor-not-allowed"
                   : "hover:scale-110 hover:shadow-xl active:scale-95 cursor-pointer hover:brightness-90"
@@ -397,7 +421,7 @@ export function HabitCard({
               style={{ backgroundColor: alreadyCheckedWeek ? hex : bgColor, color: alreadyCheckedWeek ? "#fff" : hex }}
               title={alreadyCheckedWeek ? "Ya marcado esta semana" : "Completar semana"}
             >
-              <LucideIcons.Check size={24} color={alreadyCheckedWeek ? "#fff" : hex} />
+              <LucideIcons.Check size={20} className="sm:w-6 sm:h-6" color={alreadyCheckedWeek ? "#fff" : hex} />
             </button>
           ) : habit.allowMultiplePerDay && segments > 1 ? (
             spinnerButton
@@ -409,7 +433,7 @@ export function HabitCard({
                 onCheckin(habit.id);
               }}
               disabled={loading}
-              className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl font-bold shrink-0 transition-all shadow-md ${
+              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center text-xl sm:text-2xl font-bold shrink-0 transition-all shadow-md ${
                 loading
                   ? "opacity-50 cursor-not-allowed"
                   : "hover:scale-110 hover:shadow-xl active:scale-95 cursor-pointer hover:brightness-90"
@@ -417,7 +441,7 @@ export function HabitCard({
               style={isCheckedToday ? { backgroundColor: hex, color: "#fff" } : { backgroundColor: "transparent", border: `2px solid ${hex}`, color: hex }}
               title="Completar hoy"
             >
-              {isCheckedToday ? <LucideIcons.Check size={20} color="#fff" /> : <LucideIcons.Check size={20} color={hex} />}
+              {isCheckedToday ? <LucideIcons.Check size={18} className="sm:w-5 sm:h-5" color="#fff" /> : <LucideIcons.Check size={18} className="sm:w-5 sm:h-5" color={hex} />}
             </button>
           )
         )}
@@ -425,7 +449,7 @@ export function HabitCard({
 
       {viewMode === "default" && (
         <div
-          className={`px-4 pb-4 ${darkMode ? "bg-gray-900/20" : "bg-gray-50/50"}`}
+          className={`px-3 pb-3 sm:px-4 sm:pb-4 ${darkMode ? "bg-gray-900/20" : "bg-gray-50/50"}`}
         >
           <HabitHeatmap
             data={checkins}
@@ -442,7 +466,7 @@ export function HabitCard({
 
       {viewMode === "month" && (
         <div
-          className={`px-4 pb-4 ${darkMode ? "bg-gray-900/20" : "bg-gray-50/60"}`}
+          className={`px-3 pb-3 sm:px-4 sm:pb-4 ${darkMode ? "bg-gray-900/20" : "bg-gray-50/60"}`}
         >
           <HabitCalendar
             habit={habit}
@@ -458,9 +482,9 @@ export function HabitCard({
 
       {viewMode === "week" && weekDates.length > 0 && (
         <div
-          className={`px-4 pb-4 ${darkMode ? "bg-gray-900/10" : "bg-slate-50"}`}
+          className={`px-3 pb-3 sm:px-4 sm:pb-4 ${darkMode ? "bg-gray-900/10" : "bg-slate-50"}`}
         >
-          <div className="grid grid-cols-7 gap-2 text-[10px] uppercase tracking-[0.2em] mb-2 text-center">
+          <div className="grid grid-cols-7 gap-1.5 sm:gap-2 text-[9px] sm:text-[10px] uppercase tracking-[0.15em] sm:tracking-[0.2em] mb-1.5 sm:mb-2 text-center">
             {weekDates.map((date) => (
               <span
                 key={`label-${format(date, "yyyy-MM-dd")}`}
@@ -470,7 +494,7 @@ export function HabitCard({
               </span>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-2">
+          <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
             {weekDates.map((date) => {
               const dateStr = format(date, "yyyy-MM-dd");
               const dayCount = checkins[dateStr] || 0;
@@ -533,15 +557,15 @@ export function HabitCard({
                     handleWeekCellToggle(date);
                   }}
                   disabled={isFuture}
-                  className={`h-12 rounded-2xl border flex items-center justify-center text-xs font-medium transition-all ${
+                  className={`h-10 sm:h-12 rounded-xl sm:rounded-2xl border flex items-center justify-center text-xs font-medium transition-all ${
                     isFuture
                       ? "opacity-40 cursor-not-allowed"
-                      : "hover:translate-y-[-1px]"
+                      : "hover:-translate-y-px active:scale-95"
                   } ${
                     isToday && !isFuture
                       ? darkMode
-                        ? "ring-2 ring-offset-2 ring-blue-500/70 ring-offset-gray-950"
-                        : "ring-2 ring-offset-2 ring-blue-500/40 ring-offset-white"
+                        ? "ring-1 sm:ring-2 ring-offset-1 sm:ring-offset-2 ring-blue-500/70 ring-offset-gray-950"
+                        : "ring-1 sm:ring-2 ring-offset-1 sm:ring-offset-2 ring-blue-500/40 ring-offset-white"
                       : ""
                   }`}
                   style={{ backgroundColor, borderColor, color: textColor }}
@@ -551,26 +575,27 @@ export function HabitCard({
                 >
                   <div className="flex flex-col items-center gap-0.5 leading-none">
                     <span
-                      className="text-[9px] font-medium uppercase tracking-wide"
+                      className="text-[8px] sm:text-[9px] font-medium uppercase tracking-wide"
                       style={{ color: dayNumberColor, opacity: 0.7 }}
                     >
                       {format(date, "MMM", { locale: es })}
                     </span>
                     <span
-                      className="text-[13px] font-bold"
+                      className="text-[11px] sm:text-[13px] font-bold"
                       style={{ color: dayNumberColor }}
                     >
                       {format(date, "d")}
                     </span>
                     {habit.allowMultiplePerDay ? (
-                      <span className="text-[11px] font-semibold" style={{ color: textColor }}>
+                      <span className="text-[10px] sm:text-[11px] font-semibold" style={{ color: textColor }}>
                         {dayCount}/{maxCount}
                       </span>
                     ) : (
                       <LucideIcons.Check
-                        size={14}
+                        size={12}
+                        className="sm:w-3.5 sm:h-3.5"
                         color={textColor}
-                        className={filled ? "opacity-100" : "opacity-0"}
+                        style={{ opacity: filled ? 1 : 0 }}
                       />
                     )}
                   </div>
@@ -593,6 +618,9 @@ export function HabitCard({
           onEdit={onEdit}
           onArchive={onArchive}
           onDelete={onDelete}
+          onGroupsChange={onGroupsChange}
+          groups={allGroups}
+          habitGroups={groups}
         />
       )}
 

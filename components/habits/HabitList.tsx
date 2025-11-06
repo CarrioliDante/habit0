@@ -1,11 +1,13 @@
 "use client";
-import { Habit } from "@/types";
+import { Habit, Group } from "@/types";
 import { HabitCard } from "./HabitCard";
 
 interface HabitListProps {
   habits: Habit[];
   habitCheckins: Record<number, Record<string, number>>;
   habitStreaks: Record<number, number>;
+  habitGroups?: Record<number, Group[]>; // Mapa de habitId -> grupos
+  allGroups?: Group[]; // Todos los grupos disponibles
   dateRange: { from: string; to: string };
   viewMode?: "default" | "month" | "week";
   darkMode: boolean;
@@ -14,6 +16,7 @@ interface HabitListProps {
   onArchive: (habitId: number) => void;
   onDelete: (habitId: number) => void;
   onBatchUpdateCheckins: (habitId: number, updates: Array<{ date: string; count: number }>) => void;
+  onGroupsChange?: () => void; // Callback cuando cambian los grupos
   loading: boolean;
   emptyMessage?: string;
 }
@@ -25,6 +28,8 @@ export function HabitList({
   habits,
   habitCheckins,
   habitStreaks,
+  habitGroups = {},
+  allGroups = [],
   dateRange,
   viewMode = "default",
   darkMode,
@@ -33,6 +38,7 @@ export function HabitList({
   onArchive,
   onDelete,
   onBatchUpdateCheckins,
+  onGroupsChange,
   loading,
   emptyMessage,
 }: HabitListProps) {
@@ -58,6 +64,8 @@ export function HabitList({
           habit={habit}
           checkins={habitCheckins[habit.id] || {}}
           streak={habitStreaks[habit.id] || 0}
+          groups={habitGroups[habit.id] || []}
+          allGroups={allGroups}
           dateRange={dateRange}
           viewMode={viewMode}
           darkMode={darkMode}
@@ -66,6 +74,7 @@ export function HabitList({
           onArchive={onArchive}
           onDelete={onDelete}
           onBatchUpdateCheckins={onBatchUpdateCheckins}
+          onGroupsChange={onGroupsChange}
           loading={loading}
         />
       ))}

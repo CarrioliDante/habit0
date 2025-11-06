@@ -3,11 +3,16 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { format, subMonths, startOfWeek, endOfWeek, eachDayOfInterval, parseISO } from "date-fns";
 import { Archive, Trash2 } from "lucide-react";
 import { DEFAULT_HABIT_COLOR } from "@/lib/colors";
-import { Habit } from "@/types";
+import { Habit, Group } from "@/types";
 import { HabitHeatmap } from "./HabitHeatmap";
 import { EditableIcon } from "./EditableIcon";
 import { HabitSettings } from "./HabitSettings";
 import { HabitCalendar } from "./HabitCalendar";
+import * as LucideIcons from "lucide-react";
+import { normalizeIconValue } from "@/lib/iconUtils";
+import type { ComponentType } from "react";
+import { addToGroupsSyncQueue } from "@/lib/groupsSyncQueue";
+import { updateHabitGroupsInCache } from "@/lib/groupsCache";
 
 interface HabitDetailModalProps {
   habit: Habit;
@@ -18,6 +23,9 @@ interface HabitDetailModalProps {
   onEdit: (habit: Habit) => void;
   onArchive: (habitId: number) => void;
   onDelete: (habitId: number) => void;
+  onGroupsChange?: () => void; // Callback cuando cambian los grupos
+  groups?: Group[]; // Grupos pre-cargados desde el padre
+  habitGroups?: Group[]; // Grupos del hábito pre-cargados
 }
 
 /**
@@ -33,6 +41,9 @@ export function HabitDetailModal({
   onEdit,
   onArchive,
   onDelete,
+  onGroupsChange,
+  groups: propGroups,
+  habitGroups: propHabitGroups,
 }: HabitDetailModalProps) {
   const heatmapRef = useRef<HTMLDivElement>(null);
 
@@ -44,9 +55,118 @@ export function HabitDetailModal({
   // Estado local para checkins optimistas
   const [localData, setLocalData] = useState<Record<string, number>>(data);
 
+  // Estados para grupos
+  const [groups, setGroups] = useState<Group[]>(propGroups || []);
+  const [habitGroupIds, setHabitGroupIds] = useState<number[]>(
+    propHabitGroups ? propHabitGroups.map((g) => g.id) : []
+  );
+  const [loadingGroups, setLoadingGroups] = useState(
+    !propGroups || !propHabitGroups
+  );
+
   // Acumulador de cambios pendientes para batch
   const pendingChangesRef = useRef<Map<string, number>>(new Map());
   const batchTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cargar grupos disponibles y grupos del hábito solo si no se pasaron como props
+  useEffect(() => {
+    // Si ya tenemos los datos como props, no necesitamos cargar nada
+    if (propGroups && propHabitGroups) {
+      setGroups(propGroups);
+      setHabitGroupIds(propHabitGroups.map((g) => g.id));
+      setLoadingGroups(false);
+      return;
+    }
+
+    const loadGroupsData = async () => {
+      try {
+        setLoadingGroups(true);
+
+        // Cargar grupos y grupos del hábito en paralelo
+        const promises: Promise<Response>[] = [];
+
+        if (!propGroups) {
+          promises.push(fetch("/api/groups"));
+        }
+
+        if (!propHabitGroups) {
+          promises.push(fetch(`/api/habits/${habit.id}/groups`));
+        }
+
+        const responses = await Promise.all(promises);
+        const groupsIndex = 0;
+        const habitGroupsIndex = propGroups ? 0 : 1;
+
+        // Procesar grupos disponibles
+        if (!propGroups && responses[groupsIndex]) {
+          const groupsJson = await responses[groupsIndex].json();
+          if (groupsJson.success && groupsJson.data) {
+            setGroups(groupsJson.data as Group[]);
+          }
+        }
+
+        // Procesar grupos del hábito
+        if (!propHabitGroups && responses[habitGroupsIndex]) {
+          const habitGroupsJson = await responses[habitGroupsIndex].json();
+          if (habitGroupsJson.success && habitGroupsJson.data) {
+            const groupIds = (habitGroupsJson.data as Group[]).map((g) => g.id);
+            setHabitGroupIds(groupIds);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading groups:", error);
+      } finally {
+        setLoadingGroups(false);
+      }
+    };
+    loadGroupsData();
+  }, [habit.id, propGroups, propHabitGroups]);
+
+  // Función para agregar/quitar grupo con UI optimista y offline-first
+  const toggleGroup = async (groupId: number) => {
+    const isCurrentlyInGroup = habitGroupIds.includes(groupId);
+
+    // 1) Actualización optimista en UI
+    if (isCurrentlyInGroup) {
+      setHabitGroupIds((prev) => prev.filter((id) => id !== groupId));
+    } else {
+      setHabitGroupIds((prev) => [...prev, groupId]);
+    }
+
+    // 2) Actualizar caché local
+    const updatedGroups = isCurrentlyInGroup
+      ? groups.filter((g) => g.id !== groupId)
+      : [...groups.filter((g) => habitGroupIds.includes(g.id)), groups.find((g) => g.id === groupId)!].filter(Boolean);
+
+    updateHabitGroupsInCache(habit.id, updatedGroups);
+
+    // 3) Agregar a cola de sincronización
+    addToGroupsSyncQueue({
+      type: isCurrentlyInGroup ? "removeHabit" : "addHabit",
+      groupId,
+      habitId: habit.id,
+    });
+
+    // 4) Intentar sincronizar inmediatamente en background
+    const syncInBackground = async () => {
+      try {
+        const response = await fetch(`/api/groups/${groupId}/habits`, {
+          method: isCurrentlyInGroup ? "DELETE" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ habitId: habit.id }),
+        });
+
+        if (response.ok) {
+          // Notificar al padre que los grupos cambiaron (para refrescar el Dashboard)
+          onGroupsChange?.();
+        }
+      } catch (error) {
+        console.error("Background sync failed, will retry later:", error);
+      }
+    };
+
+    syncInBackground();
+  };
 
   // Actualizar estados cuando cambien los props
   useEffect(() => {
@@ -360,6 +480,44 @@ export function HabitDetailModal({
             darkMode={darkMode}
             onHabitChange={handleHabitChange}
           />
+
+          {/* Grupos */}
+          {!loadingGroups && groups.length > 0 && (
+            <div className="mb-3">
+              <span className={`text-xs mb-2 block ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                Grupos:
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {groups.map((group) => {
+                  const isInGroup = habitGroupIds.includes(group.id);
+                  const Icons = LucideIcons as unknown as Record<string, unknown>;
+                  const IconComponent = Icons[normalizeIconValue(group.icon || "Tag")] as ComponentType<{ size?: number; className?: string }> | undefined;
+                  const Icon = IconComponent || LucideIcons.Tag;
+
+                  return (
+                    <button
+                      key={group.id}
+                      type="button"
+                      onClick={() => toggleGroup(group.id)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                        isInGroup
+                          ? darkMode
+                            ? "bg-white/20 text-white ring-1 ring-white/30"
+                            : "bg-gray-900/10 text-gray-900 ring-1 ring-gray-900/20"
+                          : darkMode
+                          ? "bg-gray-700/50 text-gray-300 hover:bg-gray-700"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
+                      style={isInGroup ? { backgroundColor: `${group.color}30`, borderColor: group.color } : undefined}
+                    >
+                      <Icon size={12} style={{ color: group.color }} />
+                      <span>{group.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Botones de acción */}
           <div className="flex justify-end gap-2">

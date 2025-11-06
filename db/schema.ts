@@ -78,32 +78,22 @@ export const checkins = pgTable("checkins", {
   index("idx_checkins_habit").on(table.habitId),
 ]);
 
-// Definir la tabla "groups" para organizar hábitos en rutinas
+// Definir la tabla "groups" para tags/categorías de hábitos
 export const groups = pgTable("groups", {
   // Columna id: entero autoincremental que sirve como clave primaria
   id: serial("id").primaryKey(),
   // Columna userId: referencia al usuario propietario del grupo, obligatorio
   userId: integer("user_id").notNull().references(() => users.id),
-  // Columna name: nombre del grupo/rutina, obligatorio
+  // Columna name: nombre del grupo (ej: "Salud", "Trabajo", "Fitness"), obligatorio
   name: varchar("name", { length: 256 }).notNull(),
-  // Columna description: descripción opcional del grupo
-  description: text("description"),
   // Columna color: color para identificar visualmente el grupo
   color: varchar("color", { length: 16 }).default("#3b82f6"),
   // Columna icon: icono opcional para el grupo
-  icon: varchar("icon", { length: 32 }).default("Folder"),
-  // Columna daysOfWeek: días de la semana para este grupo (JSON array: [0-6], 0=domingo)
-  // Almacenado como string JSON: "[1,3,5]" = lunes, miércoles, viernes
-  daysOfWeek: varchar("days_of_week", { length: 32 }).default("[]"),
-  // Columna order: orden de visualización del grupo
-  order: integer("order").default(0),
-  // Columna isArchived: si el grupo está archivado
-  isArchived: boolean("is_archived").default(false),
+  icon: varchar("icon", { length: 32 }).default("Tag"),
   // Columna createdAt: timestamp de cuándo se creó el grupo
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
   index("idx_groups_user").on(table.userId),
-  index("idx_groups_archived").on(table.isArchived),
 ]);
 
 // Definir la tabla "habit_groups" para la relación many-to-many entre habits y groups
@@ -114,8 +104,6 @@ export const habitGroups = pgTable("habit_groups", {
   habitId: integer("habit_id").notNull().references(() => habits.id, { onDelete: "cascade" }),
   // Columna groupId: referencia al grupo
   groupId: integer("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
-  // Columna order: orden del hábito dentro del grupo
-  order: integer("order").default(0),
   // Columna createdAt: timestamp de cuándo se agregó el hábito al grupo
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
@@ -123,4 +111,51 @@ export const habitGroups = pgTable("habit_groups", {
   unique("unique_habit_per_group").on(table.habitId, table.groupId),
   index("idx_habit_groups_habit").on(table.habitId),
   index("idx_habit_groups_group").on(table.groupId),
+]);
+
+// Definir la tabla "routines" para checklists de hábitos (se completan cuando todos están checked)
+export const routines = pgTable("routines", {
+  // Columna id: entero autoincremental que sirve como clave primaria
+  id: serial("id").primaryKey(),
+  // Columna userId: referencia al usuario propietario de la rutina, obligatorio
+  userId: integer("user_id").notNull().references(() => users.id),
+  // Columna name: nombre de la rutina (ej: "Mañana productiva"), obligatorio
+  name: varchar("name", { length: 256 }).notNull(),
+  // Columna description: descripción opcional de la rutina
+  description: text("description"),
+  // Columna color: color para identificar visualmente la rutina
+  color: varchar("color", { length: 16 }).default("#8b5cf6"),
+  // Columna icon: icono para la rutina
+  icon: varchar("icon", { length: 32 }).default("ListChecks"),
+  // Columna daysOfWeek: días de la semana para esta rutina (JSON array: [1-7], 1=lunes, 7=domingo)
+  // Almacenado como string JSON: "[1,3,5]" = lunes, miércoles, viernes
+  daysOfWeek: varchar("days_of_week", { length: 32 }).default("[]"),
+  // Columna order: orden de visualización de la rutina
+  order: integer("order").default(0),
+  // Columna isArchived: si la rutina está archivada
+  isArchived: boolean("is_archived").default(false),
+  // Columna createdAt: timestamp de cuándo se creó la rutina
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("idx_routines_user").on(table.userId),
+  index("idx_routines_archived").on(table.isArchived),
+]);
+
+// Definir la tabla "routine_habits" para la relación many-to-many entre routines y habits
+export const routineHabits = pgTable("routine_habits", {
+  // Columna id: entero autoincremental que sirve como clave primaria
+  id: serial("id").primaryKey(),
+  // Columna routineId: referencia a la rutina
+  routineId: integer("routine_id").notNull().references(() => routines.id, { onDelete: "cascade" }),
+  // Columna habitId: referencia al hábito
+  habitId: integer("habit_id").notNull().references(() => habits.id, { onDelete: "cascade" }),
+  // Columna order: orden del hábito dentro de la rutina
+  order: integer("order").default(0),
+  // Columna createdAt: timestamp de cuándo se agregó el hábito a la rutina
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  // Garantizar que un hábito no se agregue dos veces a la misma rutina
+  unique("unique_habit_per_routine").on(table.routineId, table.habitId),
+  index("idx_routine_habits_routine").on(table.routineId),
+  index("idx_routine_habits_habit").on(table.habitId),
 ]);

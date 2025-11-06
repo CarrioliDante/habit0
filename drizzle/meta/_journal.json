@@ -36,6 +36,13 @@
       "when": 1762459853018,
       "tag": "0004_shiny_praxagora",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1762461047222,
+      "tag": "0005_jazzy_lake",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType } from "react";
-import type { Habit, Cadence, TimeRange } from "@/types";
+import type { Habit, Cadence, TimeRange, Group } from "@/types";
 import { parseISO, subDays, format as formatDate } from "date-fns";
 import {
   getHabits,
@@ -23,7 +23,9 @@ import { HabitForm } from "@/components/habits/HabitForm";
 import { ToastContainer } from "@/components/ui/Toast";
 import { useToast } from "@/lib/hooks/useToast";
 import { useCheckin } from "@/lib/hooks/useCheckin";
-import { UserButton } from "@clerk/nextjs";
+import { Navigation } from "@/components/ui/Navigation";
+import { GroupManager } from "@/components/groups/GroupManager";
+import { GroupFilter } from "@/components/groups/GroupFilter";
 import {
   getCachedHabits,
   cacheHabits,
@@ -34,6 +36,14 @@ import {
   saveLocalCheckin,
   markCheckinAsSynced,
 } from "@/lib/localCache";
+import {
+  getCachedGroups,
+  setCachedGroups,
+  getCachedHabitGroups,
+  setCachedHabitGroups,
+  removeGroupFromCache
+} from "@/lib/groupsCache";
+import { processGroupsSyncQueue, addToGroupsSyncQueue } from "@/lib/groupsSyncQueue";
 import * as LucideIcons from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -44,8 +54,6 @@ import {
   ChevronRight,
   ClipboardList,
   ListFilter,
-  Moon,
-  Sun,
   SunMedium,
   Trash2,
   Undo2,
@@ -121,6 +129,12 @@ export default function Dashboard() {
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [showArchived, setShowArchived] = useState(false);
 
+  // Estado para grupos
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [showGroupManager, setShowGroupManager] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [habitGroups, setHabitGroups] = useState<Record<number, Group[]>>({});
+
   // Estado para filtros de tiempo (por defecto: año)
   const [timeRange, setTimeRange] = useState<TimeRange>("year");
   // const [customFrom, setCustomFrom] = useState("");
@@ -142,6 +156,92 @@ export default function Dashboard() {
 
   // ELIMINADO: Rango fijo de 12 meses
   // Ahora el heatmap usa el mismo rango que el filtro seleccionado
+
+  // Cargar grupos con patrón stale-while-revalidate
+  const loadGroups = useCallback(async () => {
+    // 1) Cargar desde cache primero (instantáneo)
+    const cached = getCachedGroups();
+    if (cached && cached.length > 0) {
+      setGroups(cached);
+    }
+
+    // 2) Revalidar en background
+    try {
+      const response = await fetch("/api/groups");
+      if (response.ok) {
+        const json = await response.json();
+        if (json.success && json.data) {
+          const freshGroups = json.data as Group[];
+          setGroups(freshGroups);
+          setCachedGroups(freshGroups);
+        }
+      }
+    } catch (error) {
+      console.error("Error loading groups:", error);
+      // Si falla y no hay caché, mostrar vacío
+      if (!cached) {
+        setGroups([]);
+      }
+    }
+  }, []);
+
+  // Cargar grupos de los hábitos con patrón stale-while-revalidate
+  const loadHabitGroups = useCallback(async (habitIds: number[]) => {
+    if (habitIds.length === 0) {
+      setHabitGroups({});
+      return;
+    }
+
+    // 1) Cargar desde cache primero (instantáneo)
+    const cached = getCachedHabitGroups();
+    if (cached) {
+      setHabitGroups(cached);
+    }
+
+    // 2) Revalidar en background
+    try {
+      // Usar el nuevo endpoint eficiente para cada hábito
+      const habitGroupMap: Record<number, Group[]> = {};
+
+      // Cargar grupos para cada hábito en paralelo
+      await Promise.all(
+        habitIds.map(async (habitId) => {
+          try {
+            const response = await fetch(`/api/habits/${habitId}/groups`);
+            if (response.ok) {
+              const json = await response.json();
+              if (json.success && json.data) {
+                habitGroupMap[habitId] = json.data;
+              } else {
+                habitGroupMap[habitId] = [];
+              }
+            } else {
+              habitGroupMap[habitId] = [];
+            }
+          } catch (error) {
+            console.error(`Error loading groups for habit ${habitId}:`, error);
+            habitGroupMap[habitId] = [];
+          }
+        })
+      );
+
+      setHabitGroups(habitGroupMap);
+      setCachedHabitGroups(habitGroupMap);
+    } catch (error) {
+      console.error("Error loading habit groups:", error);
+      // Si falla y no hay caché, usar vacío
+      if (!cached) {
+        setHabitGroups({});
+      }
+    }
+  }, []);
+
+  // Callback para refrescar los grupos de un hábito específico
+  const refreshHabitGroups = useCallback(async () => {
+    // Refrescar todos los hábitos activos
+    const activeHabitIds = habits.filter(h => !h.isArchived).map(h => h.id);
+    await loadHabitGroups(activeHabitIds);
+  }, [habits, loadHabitGroups]);
 
     // Cargar hábitos con patrón stale-while-revalidate
   const loadHabits = useCallback(async () => {
@@ -228,7 +328,7 @@ export default function Dashboard() {
   // Cargar métricas
   const loadMetrics = useCallback(async () => {
     try {
-      const data = await getAnalyticsOverview({
+      await getAnalyticsOverview({
         from: dateRange.from,
         to: dateRange.to,
       });
@@ -239,7 +339,7 @@ export default function Dashboard() {
   }, [dateRange.from, dateRange.to]); // Solo deps necesarias
 
   // Check-in handling with queue + debouncing
-  const { handleCheckin: handleCheckinOptimized, hasPendingSync } = useCheckin({
+  const { handleCheckin: handleCheckinOptimized } = useCheckin({
     habitCheckins,
     setHabitCheckins,
     checkinsCacheRef,
@@ -429,7 +529,37 @@ export default function Dashboard() {
   // Effects
   useEffect(() => {
     loadHabits();
-  }, [loadHabits]);
+    loadGroups();
+
+    // Procesar cola de sincronización de grupos en segundo plano
+    processGroupsSyncQueue().catch(error => {
+      console.error("Error processing groups sync queue:", error);
+    });
+  }, [loadHabits, loadGroups]);
+
+  // Función para eliminar grupo (offline-first)
+  const handleDeleteGroup = async (groupId: number) => {
+    // 1) Eliminar optimistamente de la UI
+    setGroups((prev) => prev.filter((g) => g.id !== groupId));
+
+    // 2) Eliminar del caché
+    removeGroupFromCache(groupId);
+
+    // 3) Agregar a cola de sincronización
+    addToGroupsSyncQueue({
+      type: "delete",
+      groupId,
+    });
+
+    // 4) Intentar eliminar en background
+    try {
+      await fetch(`/api/groups/${groupId}`, { method: "DELETE" });
+      success("Grupo eliminado correctamente");
+    } catch (error) {
+      console.error("Error deleting group:", error);
+      // La cola de sincronización lo reintentará
+    }
+  };
 
   // Cargar métricas cuando cambia el rango de fechas
   useEffect(() => {
@@ -442,6 +572,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (habits.length === 0) return;
     loadHabitCheckins(habits, true); // replace = true para carga completa
+    loadHabitGroups(habits.map(h => h.id)); // Cargar grupos de los hábitos
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange.from, dateRange.to, habits.length]); // Recargar cuando cambia el filtro
 
@@ -452,13 +583,22 @@ export default function Dashboard() {
   const filteredActiveHabits = useMemo(() => {
     let filtered = activeHabits;
 
+    // Filtrar por cadencia
     if (filterCadence !== "all") {
       filtered = filtered.filter((h) => h.cadence === filterCadence);
     }
 
+    // Filtrar por grupo seleccionado
+    if (selectedGroupId !== null) {
+      filtered = filtered.filter((h) => {
+        const groups = habitGroups[h.id] || [];
+        return groups.some(g => g.id === selectedGroupId);
+      });
+    }
+
     // Ordenar por título alfabéticamente
     return [...filtered].sort((a, b) => a.title.localeCompare(b.title));
-  }, [activeHabits, filterCadence]);
+  }, [activeHabits, filterCadence, selectedGroupId, habitGroups]);
   const dashboardViewMode: "default" | "week" | "month" =
     timeRange === "month" ? "month" : timeRange === "week" ? "week" : "default";
 
@@ -485,12 +625,30 @@ export default function Dashboard() {
     icon?: string;
     color?: string;
     allowMultiplePerDay?: boolean;
+    groupIds?: number[];
   }) => {
     try {
       setLoading(true);
       setErr(null);
-      const created = await apiCreateHabit(habitData);
+
+      // Extraer groupIds antes de crear el hábito
+      const { groupIds, ...habitDataWithoutGroups } = habitData;
+
+      const created = await apiCreateHabit(habitDataWithoutGroups);
       const normalizedHabit = normalizeHabitData(created);
+
+      // Asignar grupos si se seleccionaron
+      if (groupIds && groupIds.length > 0) {
+        await Promise.all(
+          groupIds.map(groupId =>
+            fetch(`/api/groups/${groupId}/habits`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ habitId: normalizedHabit.id }),
+            })
+          )
+        );
+      }
 
       setHabits((prev) => [...prev, normalizedHabit]);
       setHabitCheckins((prev) => ({ ...prev, [normalizedHabit.id]: {} }));
@@ -502,11 +660,14 @@ export default function Dashboard() {
 
       await loadHabitCheckins([normalizedHabit], false);
       setShowCreateModal(false);
+      success("Hábito creado correctamente");
     } catch (e: unknown) {
       if (e instanceof Error) {
         setErr(e.message);
+        showError(e.message);
       } else {
         setErr("Error al crear el hábito");
+        showError("Error al crear el hábito");
       }
     } finally {
       setLoading(false);
@@ -523,13 +684,34 @@ export default function Dashboard() {
       icon?: string;
       color?: string;
       allowMultiplePerDay?: boolean;
+      groupIds?: number[];
     }
   ) => {
     try {
       setLoading(true);
       setErr(null);
-      const updated = await updateHabit(habitId, habitData);
+
+      // Extraer groupIds antes de actualizar el hábito
+      const { groupIds, ...habitDataWithoutGroups } = habitData;
+
+      const updated = await updateHabit(habitId, habitDataWithoutGroups);
       const normalized = normalizeHabitData(updated);
+
+      // TODO: Actualizar grupos (eliminar los viejos y agregar los nuevos)
+      // Por ahora solo agregamos los nuevos
+      if (groupIds && groupIds.length > 0) {
+        await Promise.all(
+          groupIds.map(groupId =>
+            fetch(`/api/groups/${groupId}/habits`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ habitId }),
+            }).catch(() => {
+              // Ignorar errores de duplicados
+            })
+          )
+        );
+      }
 
       setHabits((prev) => prev.map((habit) => (habit.id === habitId ? normalized : habit)));
 
@@ -805,40 +987,12 @@ export default function Dashboard() {
   return (
     <div className={`min-h-screen transition-colors ${
       darkMode
-        ? "bg-gradient-to-br from-gray-900 via-slate-900 to-gray-900"
-        : "bg-gradient-to-br from-white via-gray-50 to-white"
+        ? "bg-linear-to-br from-gray-900 via-slate-900 to-gray-900"
+        : "bg-linear-to-br from-white via-gray-50 to-white"
     }`}>
-      <div className="max-w-6xl mx-auto px-4 py-6">
-        {/* Header con UserButton y Dark Mode */}
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-3">
-            <h1
-              className={`text-2xl font-bold ${
-                darkMode ? "text-white" : "text-gray-900"
-              }`}
-            >
-              Habit<span className="text-blue-500">0</span>
-            </h1>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Dark Mode Toggle */}
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className={`p-2 rounded-lg transition-colors ${
-                darkMode
-                  ? "bg-gray-800/50 text-gray-300 hover:bg-gray-700/50"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-              aria-label="Toggle dark mode"
-            >
-              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
-
-            {/* User Button from Clerk */}
-            <UserButton afterSignOutUrl="/" />
-          </div>
-        </div>
+      <div className="max-w-6xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6">
+        {/* Navigation Component */}
+        <Navigation darkMode={darkMode} onToggleDarkMode={() => setDarkMode(!darkMode)} />
 
         {/* Error message */}
         {err && (
@@ -853,11 +1007,11 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Filtros centrales con estética minimalista */}
+        {/* Filtros centrales con estética minimalista - responsive */}
         {activeHabits.length > 0 && (
-          <div className="mb-8 flex justify-center">
+          <div className="mb-6 sm:mb-8 flex justify-center relative z-10">
             <div
-              className={`flex flex-wrap items-center gap-2 rounded-full px-3 py-2 border ${
+              className={`flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 rounded-2xl sm:rounded-full px-2 sm:px-3 py-2 border w-full sm:w-auto ${
                 darkMode
                   ? "border-gray-700 bg-gray-900/70 backdrop-blur"
                   : "border-slate-200 bg-white/80 backdrop-blur shadow-sm"
@@ -875,7 +1029,7 @@ export default function Dashboard() {
                   <button
                     key={value}
                     onClick={() => setTimeRange(value)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                    className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-colors ${
                       active
                         ? darkMode
                           ? "bg-white/15 text-white"
@@ -886,8 +1040,8 @@ export default function Dashboard() {
                     }`}
                     aria-pressed={active}
                   >
-                    <Icon size={15} />
-                    {label}
+                    <Icon size={14} className="sm:w-[15px] sm:h-[15px]" />
+                    <span className="hidden xs:inline">{label}</span>
                   </button>
                 );
               })}
@@ -906,7 +1060,7 @@ export default function Dashboard() {
                   <button
                     key={value}
                     onClick={() => setFilterCadence(value)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                    className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-colors ${
                       active
                         ? darkMode
                           ? "bg-white/15 text-white"
@@ -917,11 +1071,40 @@ export default function Dashboard() {
                     }`}
                     aria-pressed={active}
                   >
-                    <Icon size={15} />
-                    {label}
+                    <Icon size={14} className="sm:w-[15px] sm:h-[15px]" />
+                    <span className="hidden xs:inline">{label}</span>
                   </button>
                 );
               })}
+
+              {/* Separador y filtro de grupos */}
+              {groups.length > 0 && (
+                <>
+                  <span className={`${darkMode ? "bg-gray-700/80" : "bg-slate-200"} h-6 w-px rounded-full`} aria-hidden="true" />
+                  <GroupFilter
+                    groups={groups}
+                    selectedGroupId={selectedGroupId}
+                    onSelectGroup={setSelectedGroupId}
+                    onDeleteGroup={handleDeleteGroup}
+                    darkMode={darkMode}
+                  />
+                </>
+              )}
+
+              {/* Botón gestionar grupos */}
+              <span className={`${darkMode ? "bg-gray-700/80" : "bg-slate-200"} h-6 w-px rounded-full hidden sm:block`} aria-hidden="true" />
+              <button
+                onClick={() => setShowGroupManager(true)}
+                className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-colors ${
+                  darkMode
+                    ? "text-gray-400 hover:text-white hover:bg-white/10"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                }`}
+                title="Gestionar grupos"
+              >
+                <ClipboardList size={14} className="sm:w-[15px] sm:h-[15px]" />
+                <span className="hidden xs:inline">Grupos</span>
+              </button>
             </div>
           </div>
         )}
@@ -930,7 +1113,7 @@ export default function Dashboard() {
         {/* Loading state inicial */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20">
-            <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent mb-4"></div>
+            <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-solid border-green-500 border-r-transparent mb-4"></div>
             <p className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
               Cargando hábitos...
             </p>
@@ -970,6 +1153,8 @@ export default function Dashboard() {
             habits={filteredActiveHabits}
             habitCheckins={habitCheckins}
             habitStreaks={habitStreaks}
+            habitGroups={habitGroups}
+            allGroups={groups}
             dateRange={dateRange}
             viewMode={dashboardViewMode}
             darkMode={darkMode}
@@ -978,10 +1163,13 @@ export default function Dashboard() {
             onArchive={(id) => handleDelete(id, false)}
             onDelete={(id) => handleDelete(id, true)}
             onBatchUpdateCheckins={handleBatchUpdateCheckins}
+            onGroupsChange={refreshHabitGroups}
             loading={loading}
             emptyMessage={
               filterCadence !== "all"
                 ? "No hay hábitos con esta cadencia"
+                : selectedGroupId !== null
+                ? "No hay hábitos en este grupo"
                 : "Todavía no tenés hábitos"
             }
           />
@@ -1053,13 +1241,13 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Botón flotante para agregar hábito - solo visible si hay hábitos */}
+      {/* Botón flotante para agregar hábito - solo visible si hay hábitos - responsive */}
       {activeHabits.length > 0 && (
       <button
         onClick={() => setShowCreateModal(true)}
-        className={`fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl transition-transform hover:scale-110 ${
-          darkMode ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-600 hover:bg-blue-700"
-        } text-white`}
+        className={`fixed bottom-4 right-4 sm:bottom-6 sm:right-6 w-12 h-12 sm:w-14 sm:h-14 rounded-full shadow-lg flex items-center justify-center text-xl sm:text-2xl transition-transform hover:scale-110 active:scale-95 ${
+          darkMode ? "bg-green-500 hover:bg-green-600" : "bg-green-500 hover:bg-green-600"
+        } text-white z-50`}
         title="Añadir hábito"
         aria-label="Añadir hábito"
       >
@@ -1075,6 +1263,7 @@ export default function Dashboard() {
           loading={loading}
           darkMode={darkMode}
           isModal
+          groups={groups}
         />
       )}
 
@@ -1087,8 +1276,24 @@ export default function Dashboard() {
           loading={loading}
           darkMode={darkMode}
           isModal
+          groups={groups}
         />
       )}
+
+      {/* Modal para gestionar grupos */}
+      <GroupManager
+        isOpen={showGroupManager}
+        onClose={() => setShowGroupManager(false)}
+        onSuccess={() => {
+          // El caché ya fue actualizado por GroupManager, solo refrescamos desde ahí
+          const cached = getCachedGroups();
+          if (cached) {
+            setGroups(cached);
+          }
+          success("Grupo guardado correctamente");
+        }}
+        darkMode={darkMode}
+      />
 
       {/* Toast notifications */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />

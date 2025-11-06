@@ -1,4 +1,7 @@
 export const HABIT_COLORS = [
+  "#22C55E", // emerald (color principal)
+  "#16A34A", // deep green
+  "#15803D", // forest green
   "#2563EB", // vivid blue
   "#1D4ED8", // deep blue
   "#4338CA", // indigo
@@ -11,9 +14,6 @@ export const HABIT_COLORS = [
   "#D97706", // amber
   "#F59E0B", // golden amber
   "#CA8A04", // warm gold
-  "#22C55E", // emerald
-  "#16A34A", // deep green
-  "#15803D", // forest green
   "#14B8A6", // teal
   "#0F766E", // deep teal
   "#0EA5E9", // sky
@@ -21,4 +21,5 @@ export const HABIT_COLORS = [
   "#0369A1", // sea blue
 ] as const;
 
-export const DEFAULT_HABIT_COLOR = HABIT_COLORS[0];
+export const DEFAULT_HABIT_COLOR = HABIT_COLORS[0]; // #22C55E
+

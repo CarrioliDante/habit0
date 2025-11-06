@@ -1,28 +1,77 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
-import { CheckCircle2, Calendar, TrendingUp, Zap } from "lucide-react";
+import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from "@clerk/nextjs";
+import { CheckCircle2, Calendar, TrendingUp, Zap, Moon, Sun } from "lucide-react";
 
 export default function Home() {
-  // Detectar preferencia del sistema (solo en cliente)
-  const [isDark] = useState(() => {
+  const router = useRouter();
+  const { isSignedIn, isLoaded } = useUser();
+
+  // Redirigir a dashboard si está logueado
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      router.push("/dashboard");
+    }
+  }, [isLoaded, isSignedIn, router]);
+
+  // Estado para el tema con toggle manual
+  const [isDark, setIsDark] = useState(() => {
     if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("theme");
+      if (saved) {
+        return saved === "dark";
+      }
       return window.matchMedia("(prefers-color-scheme: dark)").matches;
     }
     return false;
   });
 
+  // Guardar preferencia del tema
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("theme", isDark ? "dark" : "light");
+    }
+  }, [isDark]);
+
+  // Mostrar loading mientras verifica autenticación
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="text-white">Cargando...</div>
+      </div>
+    );
+  }
+
+  // No mostrar nada si está logueado (ya redirigió)
+  if (isSignedIn) {
+    return null;
+  }
+
   return (
     <main
-      className={`min-h-screen transition-colors duration-200 ${
+      className={`min-h-screen flex flex-col items-center justify-center transition-colors ${
         isDark
-          ? "bg-gradient-to-br from-gray-900 via-slate-900 to-gray-900"
-          : "bg-gradient-to-br from-white via-gray-50 to-white"
+          ? "bg-linear-to-br from-gray-900 via-slate-900 to-gray-900"
+          : "bg-linear-to-br from-white via-gray-50 to-white"
       }`}
     >
       {/* Header */}
-      <header className="absolute top-0 right-0 p-6">
+      <header className="absolute top-0 right-0 p-6 flex items-center gap-4">
+        {/* Theme Toggle */}
+        <button
+          onClick={() => setIsDark(!isDark)}
+          className={`p-2 rounded-lg transition-colors ${
+            isDark
+              ? "bg-gray-800 hover:bg-gray-700 text-yellow-400"
+              : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+          }`}
+          aria-label="Toggle theme"
+        >
+          {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+        </button>
+
         <SignedIn>
           <UserButton afterSignOutUrl="/" />
         </SignedIn>
@@ -38,7 +87,7 @@ export default function Home() {
                 isDark ? "text-white" : "text-gray-900"
               }`}
             >
-              Habit<span className="text-blue-500">0</span>
+              Habit<span className="text-green-500">0</span>
             </h1>
             <p
               className={`text-xl md:text-2xl ${
@@ -83,7 +132,7 @@ export default function Home() {
               >
                 <feature.icon
                   className={`w-8 h-8 mx-auto mb-3 ${
-                    isDark ? "text-blue-400" : "text-blue-600"
+                    isDark ? "text-green-400" : "text-green-500"
                   }`}
                 />
                 <h3
@@ -111,8 +160,8 @@ export default function Home() {
                 <button
                   className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 ${
                     isDark
-                      ? "bg-blue-600 hover:bg-blue-700 text-white"
-                      : "bg-blue-600 hover:bg-blue-700 text-white"
+                      ? "bg-green-500 hover:bg-green-600 text-white"
+                      : "bg-green-500 hover:bg-green-600 text-white"
                   } shadow-lg hover:shadow-xl hover:scale-105`}
                 >
                   Comenzar gratis
@@ -125,8 +174,8 @@ export default function Home() {
                 href="/dashboard"
                 className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-200 ${
                   isDark
-                    ? "bg-blue-600 hover:bg-blue-700 text-white"
-                    : "bg-blue-600 hover:bg-blue-700 text-white"
+                    ? "bg-green-500 hover:bg-green-600 text-white"
+                    : "bg-green-500 hover:bg-green-600 text-white"
                 } shadow-lg hover:shadow-xl hover:scale-105`}
               >
                 Ir al Dashboard

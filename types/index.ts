@@ -14,16 +14,13 @@ export type Habit = {
   isArchived?: boolean; // Indica si el hábito está archivado (soft delete)
 };
 
+// Grupos: tags/categorías para organizar hábitos
 export type Group = {
   id: number;
   userId: number;
   name: string;
-  description?: string | null;
   color?: string; // Color en formato hex
   icon?: string; // Nombre del icono lucide
-  daysOfWeek: number[]; // Array de días [0-6], 0=domingo
-  order: number; // Orden de visualización
-  isArchived?: boolean;
   createdAt?: string;
 };
 
@@ -31,13 +28,54 @@ export type HabitGroup = {
   id: number;
   habitId: number;
   groupId: number;
-  order: number;
   createdAt?: string;
 };
 
 // Tipo para grupo con sus hábitos (para UI)
 export type GroupWithHabits = Group & {
   habits: Habit[];
+};
+
+// Rutinas: checklists de hábitos (completadas cuando todos los hábitos están checked)
+export type Routine = {
+  id: number;
+  userId: number;
+  name: string;
+  description?: string | null;
+  color?: string; // Color en formato hex
+  icon?: string; // Nombre del icono lucide
+  daysOfWeek: number[]; // Array de días [1-7], 1=lunes, 7=domingo
+  order: number; // Orden de visualización
+  isArchived?: boolean;
+  createdAt?: string;
+};
+
+export type RoutineHabit = {
+  id: number;
+  routineId: number;
+  habitId: number;
+  order: number;
+  createdAt?: string;
+};
+
+// Tipo para rutina con sus hábitos (para UI)
+export type RoutineWithHabits = Routine & {
+  habits: Habit[];
+};
+
+// Tipo para progreso de rutina en un día específico
+export type RoutineProgress = {
+  routineId: number;
+  date: ISODate;
+  totalHabits: number;
+  completedHabits: number;
+  isComplete: boolean; // true si todos los hábitos están checked
+  habits: Array<{
+    habitId: number;
+    title: string;
+    isChecked: boolean;
+    count: number;
+  }>;
 };
 
 // ============= ANALYTICS =============
@@ -89,16 +127,28 @@ export type GetAnalyticsParams = {
 
 export type CreateGroupRequest = {
   name: string;
-  description?: string;
   color?: string;
   icon?: string;
-  daysOfWeek?: number[]; // [0-6], 0=domingo
-  order?: number;
 };
 
 export type UpdateGroupRequest = Partial<CreateGroupRequest>;
 
 export type AddHabitToGroupRequest = {
+  habitId: number;
+};
+
+export type CreateRoutineRequest = {
+  name: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  daysOfWeek?: number[]; // [1-7], 1=lunes, 7=domingo
+  order?: number;
+};
+
+export type UpdateRoutineRequest = Partial<CreateRoutineRequest>;
+
+export type AddHabitToRoutineRequest = {
   habitId: number;
   order?: number;
 };
