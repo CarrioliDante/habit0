@@ -16,6 +16,11 @@
 import { useCallback, useRef } from "react";
 import { retryWithBackoff } from "@/lib/retryUtils";
 import { operationQueue } from "@/lib/operationQueue";
+import {
+  saveLocalCheckin,
+  markCheckinAsSynced,
+} from "@/lib/localCache";
+import { enqueueSyncOperation, completeSyncOperation, failSyncOperation } from "@/lib/syncQueue";
 import type { Habit, ApiResponse } from "@/types";
 
 type CheckinState = Record<string, Record<string, number>>;
@@ -82,6 +87,10 @@ export function useCheckin({
         },
       }));
 
+      // 🔥 CRITICAL: Guardar INMEDIATAMENTE en localStorage (source of truth)
+      // Esto asegura que el dato persiste incluso si se recarga la página
+      saveLocalCheckin(habitId, dateStr, nextCount, false);
+
       // Update cache
       const cacheEntry = checkinsCacheRef.current[habitId];
       const previousCacheValue = cacheEntry?.data[dateStr];
@@ -124,6 +133,12 @@ export function useCheckin({
 
         const { habit: h, date: d, finalCount: count } = pending;
 
+        // Encolar operación de sync
+        const syncOpId = enqueueSyncOperation("checkin", h.id, {
+          date: d,
+          count,
+        });
+
         // Queue the operation to prevent race conditions (use queueKey string for queue)
         // Use PATCH instead of POST to set absolute value, not increment
         try {
@@ -153,6 +168,10 @@ export function useCheckin({
             );
           });
 
+          // Success: marcar como sincronizado
+          markCheckinAsSynced(h.id, d);
+          completeSyncOperation(syncOpId);
+
           // Success toast
           if (count === 0) {
             toast.info(`○ ${h.title} desmarcado`);
@@ -167,6 +186,9 @@ export function useCheckin({
         } catch (error) {
           console.error("Error in handleCheckin:", error);
           const errorMsg = error instanceof Error ? error.message : "Error al registrar check-in";
+
+          // Marcar operación como fallida (se reintentará)
+          failSyncOperation(syncOpId, errorMsg);
           toast.error(errorMsg);
 
           // Rollback optimistic update (use habitId number for state)

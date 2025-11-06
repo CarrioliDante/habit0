@@ -23,6 +23,15 @@ import { HabitForm } from "@/components/habits/HabitForm";
 import { ToastContainer } from "@/components/ui/Toast";
 import { useToast } from "@/lib/hooks/useToast";
 import { useCheckin } from "@/lib/hooks/useCheckin";
+import {
+  getCachedHabits,
+  cacheHabits,
+  invalidateHabitsCache,
+  cacheCheckins,
+  invalidateCheckinsCache,
+  getLocalCheckinsForHabit,
+  saveLocalCheckin,
+} from "@/lib/localCache";
 import * as LucideIcons from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -132,12 +141,50 @@ export default function Dashboard() {
   // ELIMINADO: Rango fijo de 12 meses
   // Ahora el heatmap usa el mismo rango que el filtro seleccionado
 
-    // Cargar hábitos
+    // Cargar hábitos con patrón stale-while-revalidate
   const loadHabits = useCallback(async () => {
-    try {
-      const data = await getHabits();
-      const normalized = data.map(normalizeHabitData);
+    // 1) Cargar desde cache primero (instantáneo)
+    const cached = getCachedHabits();
+    if (cached && cached.length > 0) {
+      const normalized = cached.map(normalizeHabitData);
       const existingIds = new Set(normalized.map((habit) => habit.id));
+
+      setHabits(normalized);
+      setHabitCheckins((prev) => {
+        const next: Record<number, Record<string, number>> = {};
+        normalized.forEach((habit) => {
+          next[habit.id] = prev[habit.id] || {};
+        });
+        return next;
+      });
+
+      const filteredCache: Record<number, { from: string; to: string; data: Record<string, number> }> = {};
+      for (const [key, value] of Object.entries(checkinsCacheRef.current)) {
+        const id = Number(key);
+        if (existingIds.has(id) && value) {
+          filteredCache[id] = value;
+        }
+      }
+      checkinsCacheRef.current = filteredCache;
+
+      for (const key of Object.keys(pendingCheckinsRef.current)) {
+        const id = Number(key);
+        if (!existingIds.has(id)) {
+          delete pendingCheckinsRef.current[id];
+        }
+      }
+
+      setLoading(false); // UI lista inmediatamente
+    }
+
+    // 2) Revalidar en background (actualiza si hay cambios)
+    try {
+      const freshHabits = await getHabits(); // apiFetch ya extrae .data automáticamente
+      const normalized = freshHabits.map(normalizeHabitData);
+      const existingIds = new Set(normalized.map((habit) => habit.id));
+
+      // Guardar en cache para próxima carga
+      cacheHabits(freshHabits);
 
       setHabits(normalized);
       setHabitCheckins((prev) => {
@@ -166,10 +213,13 @@ export default function Dashboard() {
 
       setLoading(false);
     } catch (e: unknown) {
-      if (e instanceof Error) {
-        setErr(e.message);
+      // Si falla revalidación pero tenemos cache, seguimos con cache
+      if (!cached || cached.length === 0) {
+        if (e instanceof Error) {
+          setErr(e.message);
+        }
+        setLoading(false);
       }
-      setLoading(false);
     }
   }, [normalizeHabitData]);
 
@@ -240,6 +290,10 @@ export default function Dashboard() {
       requestedFrom: string,
       requestedTo: string
     ): Promise<Record<string, number>> => {
+      // 1) CARGAR DESDE LOCALSTORAGE (source of truth - datos persistentes)
+      const localData = getLocalCheckinsForHabit(habit.id);
+
+      // 2) Intentar cache en memoria (checkinsCacheRef)
       const getSliceFromCache = () => {
         const cacheEntry = checkinsCacheRef.current[habit.id];
         if (
@@ -253,8 +307,24 @@ export default function Dashboard() {
       };
 
       const cachedSlice = getSliceFromCache();
+
+      // Si tenemos datos locales, retornarlos inmediatamente (no bloquear UI)
+      if (Object.keys(localData).length > 0) {
+        // Actualizar cache en memoria con datos locales
+        checkinsCacheRef.current[habit.id] = {
+          from: requestedFrom,
+          to: requestedTo,
+          data: localData,
+        };
+
+        // Retornar slice filtrado
+        return filterDataByRange(localData, requestedFrom, requestedTo);
+      }
+
+      // Si no hay datos locales pero hay cache en memoria, usarlo
       if (cachedSlice) return cachedSlice;
 
+      // 3) Fetch desde API en background (con deduplicación usando pendingCheckinsRef)
       if (!pendingCheckinsRef.current[habit.id]) {
         pendingCheckinsRef.current[habit.id] = getCheckins({
           from: requestedFrom,
@@ -262,8 +332,22 @@ export default function Dashboard() {
           habitId: habit.id,
         })
           .then((response) => {
+            // response ya es GetCheckinsResponse = { from, to, data: Record<string, number> }
+            const serverData = response.data || {};
+
+            // 🔥 MERGE: Datos locales tienen prioridad sobre servidor
+            const localData = getLocalCheckinsForHabit(habit.id);
+            const mergedData = { ...serverData, ...localData };
+
+            // Guardar datos del servidor en localStorage (marcar como synced)
+            for (const [date, count] of Object.entries(serverData)) {
+              if (!localData[date]) {
+                // Solo guardar si no existe localmente (local tiene prioridad)
+                saveLocalCheckin(habit.id, date, count, true);
+              }
+            }
+
             const existing = checkinsCacheRef.current[habit.id];
-            const mergedData = { ...(existing?.data ?? {}), ...response.data };
             const newFrom = existing
               ? existing.from < requestedFrom
                 ? existing.from
@@ -274,16 +358,25 @@ export default function Dashboard() {
                 ? existing.to
                 : requestedTo
               : requestedTo;
-            checkinsCacheRef.current[habit.id] = {
+
+            const newEntry = {
               from: newFrom,
               to: newTo,
               data: mergedData,
             };
+
+            // Actualizar memoria cache
+            checkinsCacheRef.current[habit.id] = newEntry;
+
+            // Guardar en legacy cache para compatibilidad
+            cacheCheckins(habit.id, mergedData, newFrom, newTo);
+
             return mergedData;
           })
           .catch((error) => {
             console.error(`Error loading checkins for habit ${habit.id}:`, error);
-            throw error;
+            // Si falla API, retornar datos locales como fallback
+            return getLocalCheckinsForHabit(habit.id);
           })
           .finally(() => {
             delete pendingCheckinsRef.current[habit.id];
@@ -294,11 +387,12 @@ export default function Dashboard() {
         await pendingCheckinsRef.current[habit.id];
       } catch (error) {
         console.error(`Error awaiting checkins for habit ${habit.id}:`, error);
-        return {};
+        // Fallback a datos locales
+        return getLocalCheckinsForHabit(habit.id);
       }
 
       const cacheEntry = checkinsCacheRef.current[habit.id];
-      if (!cacheEntry) return {};
+      if (!cacheEntry) return getLocalCheckinsForHabit(habit.id);
 
       return filterDataByRange(cacheEntry.data, requestedFrom, requestedTo);
     };
@@ -401,6 +495,9 @@ export default function Dashboard() {
       delete checkinsCacheRef.current[normalizedHabit.id];
       delete pendingCheckinsRef.current[normalizedHabit.id];
 
+      // Invalidar cache de hábitos para que próxima carga muestre el nuevo
+      invalidateHabitsCache();
+
       await loadHabitCheckins([normalizedHabit], false);
       setShowCreateModal(false);
     } catch (e: unknown) {
@@ -444,6 +541,10 @@ export default function Dashboard() {
 
       delete checkinsCacheRef.current[habitId];
       delete pendingCheckinsRef.current[habitId];
+
+      // Invalidar caches para que reflejen cambios
+      invalidateHabitsCache();
+      invalidateCheckinsCache(habitId);
 
       if (!normalized.isArchived) {
         await loadHabitCheckins([normalized], false);
@@ -612,6 +713,10 @@ export default function Dashboard() {
         );
       }
 
+      // Invalidar caches
+      invalidateHabitsCache();
+      invalidateCheckinsCache(habitId);
+
       await loadMetrics();
     } catch (e: unknown) {
       if (e instanceof Error) {
@@ -640,6 +745,10 @@ export default function Dashboard() {
           return habit;
         })
       );
+
+      // Invalidar caches
+      invalidateHabitsCache();
+
       if (restoredHabit) {
         await loadHabitCheckins([restoredHabit], false);
       }
@@ -654,6 +763,8 @@ export default function Dashboard() {
       setLoading(false);
     }
   };
+
+  // Handler para toggle del modo oscuro
 
   // const handleExportCSV = async () => {
   //   try {
