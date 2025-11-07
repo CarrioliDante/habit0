@@ -1,19 +1,12 @@
 {
-  "buildCommand": "npm run build",
-  "devCommand": "npm run dev",
-  "installCommand": "npm install",
+  "buildCommand": "pnpm build",
+  "devCommand": "pnpm dev",
+  "installCommand": "pnpm install",
   "framework": "nextjs",
   "regions": ["iad1"],
   "env": {
     "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY": "@clerk_publishable_key",
     "CLERK_SECRET_KEY": "@clerk_secret_key",
-    "POSTGRES_URL": "@postgres_url",
-    "POSTGRES_PRISMA_URL": "@postgres_prisma_url",
-    "POSTGRES_URL_NO_SSL": "@postgres_url_no_ssl",
-    "POSTGRES_URL_NON_POOLING": "@postgres_url_non_pooling",
-    "POSTGRES_USER": "@postgres_user",
-    "POSTGRES_HOST": "@postgres_host",
-    "POSTGRES_PASSWORD": "@postgres_password",
-    "POSTGRES_DATABASE": "@postgres_database"
+    "DATABASE_URL": "@database_url"
   }
 }
