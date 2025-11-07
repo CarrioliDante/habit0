@@ -615,6 +615,15 @@ export default function Dashboard() {
     const today = new Date().toISOString().slice(0, 10);
     const streaks: Record<number, number> = {};
 
+    // Debug: estado de habitCheckins
+    if (process.env.NODE_ENV === 'production') {
+      console.log('[Streak Debug] habitCheckins state:', {
+        totalHabits: habits.length,
+        habitCheckinsKeys: Object.keys(habitCheckins),
+        habitCheckinsData: habitCheckins
+      });
+    }
+
     for (const habit of habits) {
       const checkins = habitCheckins[habit.id] || {};
       const dates = Object.keys(checkins).filter(date => checkins[date] > 0);
@@ -626,7 +635,8 @@ export default function Dashboard() {
           habitId: habit.id,
           checkinCount: dates.length,
           streak: streaks[habit.id],
-          lastCheckin: dates.length > 0 ? dates[dates.length - 1] : 'none'
+          lastCheckin: dates.length > 0 ? dates[dates.length - 1] : 'none',
+          allDates: dates
         });
       }
     }
