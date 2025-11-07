@@ -19,6 +19,16 @@ export function computeStreak(
   const cadence = options?.cadence ?? "daily";
   const uniqueDates = Array.from(new Set(checkinDatesISO));
 
+  // Debug en producción
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production') {
+    console.log('[computeStreak] Input:', {
+      cadence,
+      todayISO,
+      datesCount: uniqueDates.length,
+      dates: uniqueDates.slice(0, 5) // primeras 5 fechas
+    });
+  }
+
   if (cadence === "weekly") {
     if (uniqueDates.length === 0) return 0;
 
@@ -49,6 +59,17 @@ export function computeStreak(
     const date = parseISO(currentDate);
     date.setDate(date.getDate() - 1);
     currentDate = formatDate(date, "yyyy-MM-dd");
+  }
+
+  // Debug resultado en producción
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production') {
+    console.log('[computeStreak] Result:', {
+      streak,
+      todayISO,
+      hadToday: set.has(todayISO),
+      setSize: set.size,
+      firstDates: Array.from(set).slice(0, 3)
+    });
   }
 
   return streak;

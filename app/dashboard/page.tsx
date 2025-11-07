@@ -624,6 +624,11 @@ export default function Dashboard() {
       });
     }
 
+    // Si no hay hábitos o no hay checkins cargados aún, retornar vacío
+    if (habits.length === 0 || Object.keys(habitCheckins).length === 0) {
+      return streaks;
+    }
+
     for (const habit of habits) {
       const checkins = habitCheckins[habit.id] || {};
       const dates = Object.keys(checkins).filter(date => checkins[date] > 0);
