@@ -40,12 +40,15 @@ export function computeStreak(
   }
 
   const set = new Set(uniqueDates);
-  const cursor = parseISO(todayISO);
   let streak = 0;
+  let currentDate = todayISO;
 
-  while (set.has(formatDate(cursor, "yyyy-MM-dd"))) {
+  while (set.has(currentDate)) {
     streak += 1;
-    cursor.setDate(cursor.getDate() - 1);
+    // Decrementar fecha correctamente
+    const date = parseISO(currentDate);
+    date.setDate(date.getDate() - 1);
+    currentDate = formatDate(date, "yyyy-MM-dd");
   }
 
   return streak;
