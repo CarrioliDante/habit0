@@ -3,10 +3,5 @@
   "devCommand": "pnpm dev",
   "installCommand": "pnpm install",
   "framework": "nextjs",
-  "regions": ["iad1"],
-  "env": {
-    "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY": "@clerk_publishable_key",
-    "CLERK_SECRET_KEY": "@clerk_secret_key",
-    "DATABASE_URL": "@database_url"
-  }
+  "regions": ["iad1"]
 }
