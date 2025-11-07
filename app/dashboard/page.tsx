@@ -520,6 +520,14 @@ export default function Dashboard() {
         checkinsByHabit[habitId] = data;
       });
 
+      // Debug: verificar carga de checkins en producción
+      if (process.env.NODE_ENV === 'production') {
+        console.log('[Checkins Debug] Loaded checkins:', {
+          habitCount: Object.keys(checkinsByHabit).length,
+          totalCheckins: Object.values(checkinsByHabit).reduce((sum, checkins) => sum + Object.keys(checkins).length, 0)
+        });
+      }
+
       setHabitCheckins((prev) => (replace ? checkinsByHabit : { ...prev, ...checkinsByHabit }));
     } catch (error) {
       console.error("Error loading checkins:", error);
@@ -611,6 +619,16 @@ export default function Dashboard() {
       const checkins = habitCheckins[habit.id] || {};
       const dates = Object.keys(checkins).filter(date => checkins[date] > 0);
       streaks[habit.id] = computeStreak(dates, today, { cadence: habit.cadence });
+      
+      // Debug: verificar datos en producción
+      if (process.env.NODE_ENV === 'production') {
+        console.log(`[Streak Debug] Habit: ${habit.title}`, {
+          habitId: habit.id,
+          checkinCount: dates.length,
+          streak: streaks[habit.id],
+          lastCheckin: dates.length > 0 ? dates[dates.length - 1] : 'none'
+        });
+      }
     }
 
     return streaks;
