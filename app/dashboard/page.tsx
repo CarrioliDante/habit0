@@ -612,7 +612,13 @@ export default function Dashboard() {
 
   // Calcular rachas por hábito
   const habitStreaks = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    // Usar fecha local del usuario (no UTC del servidor)
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const todayISO = `${year}-${month}-${day}`;
+    
     const streaks: Record<number, number> = {};
 
     // Debug: estado de habitCheckins
@@ -620,7 +626,8 @@ export default function Dashboard() {
       console.log('[Streak Debug] habitCheckins state:', {
         totalHabits: habits.length,
         habitCheckinsKeys: Object.keys(habitCheckins),
-        habitCheckinsData: habitCheckins
+        habitCheckinsData: habitCheckins,
+        todayLocal: todayISO
       });
     }
 
@@ -632,7 +639,7 @@ export default function Dashboard() {
     for (const habit of habits) {
       const checkins = habitCheckins[habit.id] || {};
       const dates = Object.keys(checkins).filter(date => checkins[date] > 0);
-      streaks[habit.id] = computeStreak(dates, today, { cadence: habit.cadence });
+      streaks[habit.id] = computeStreak(dates, todayISO, { cadence: habit.cadence });
       
       // Debug: verificar datos en producción
       if (process.env.NODE_ENV === 'production') {
