@@ -53,6 +53,13 @@ export function computeStreak(
   let streak = 0;
   let currentDate = todayISO;
 
+  // Si no hay checkin hoy, empezar desde ayer para contar la racha histórica
+  if (!set.has(currentDate)) {
+    const date = parseISO(currentDate);
+    date.setDate(date.getDate() - 1);
+    currentDate = formatDate(date, "yyyy-MM-dd");
+  }
+
   while (set.has(currentDate)) {
     streak += 1;
     // Decrementar fecha correctamente
