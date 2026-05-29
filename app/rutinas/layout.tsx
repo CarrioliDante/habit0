@@ -4,10 +4,10 @@ export default function RutinasLayout({ children }: { children: React.ReactNode 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", transition: "background 400ms ease" }}>
       <TopNav />
-      <main style={{ maxWidth: 960, margin: "0 auto", padding: "24px 20px 80px" }}>
+      <main style={{ maxWidth: "960px", margin: "0 auto", padding: "24px 20px 80px", width: "100%" }}>
         {children}
       </main>
-      <footer style={{ padding: "16px 20px", borderTop: "1px solid var(--hairline)", textAlign: "center", userSelect: "none" }}>
+      <footer style={{ maxWidth: "960px", margin: "0 auto", width: "100%", padding: "16px 20px", borderTop: "1px solid var(--hairline)", textAlign: "center", userSelect: "none" }}>
         <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.22em", color: "var(--faint)", margin: 0 }}>Hecho en Argentina</p>
       </footer>
     </div>
