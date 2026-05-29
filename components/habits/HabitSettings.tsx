@@ -1,135 +1,107 @@
 "use client";
 import { useState } from "react";
-import { Habit, Cadence } from "@/types";
-import { DEFAULT_HABIT_COLOR } from "@/lib/colors";
-import { EditableColorPicker } from "./EditableColorPicker";
+import type { Habit } from "@/types";
+import { COLORS } from "@/lib/colors";
 
 interface HabitSettingsProps {
   habit: Habit;
-  darkMode: boolean;
-  onHabitChange: (habit: Habit) => void;
+  onChange: (habit: Habit) => void;
+  onClose: () => void;
 }
 
-export function HabitSettings({ habit, darkMode, onHabitChange }: HabitSettingsProps) {
-  const [isEditingCadence, setIsEditingCadence] = useState(false);
+export function HabitSettings({ habit, onChange, onClose }: HabitSettingsProps) {
+  const [cadence, setCadence] = useState(habit.cadence || "daily");
+  const [target, setTarget] = useState(habit.targetPerDay || 1);
+  const [color, setColor] = useState(habit.color || COLORS[0]);
+  const [multiple, setMultiple] = useState(!!habit.allowMultiplePerDay);
+  const [joker, setJoker] = useState(habit.jokerPolicy || "weekly:1");
 
-  const handleCadenceChange = (newCadence: Cadence) => {
-    const newHabit = { ...habit, cadence: newCadence };
-
-    // Si cambia a semanal o mensual, deshabilitar múltiples check-ins
-    if (newCadence === 'weekly' || newCadence === 'custom') {
-      newHabit.allowMultiplePerDay = false;
-    }
-
-    onHabitChange(newHabit);
-    setIsEditingCadence(false);
+  const handleSave = () => {
+    onChange({
+      ...habit,
+      cadence: cadence as any,
+      targetPerDay: Math.max(1, Math.min(99, target)),
+      color,
+      allowMultiplePerDay: multiple,
+      jokerPolicy: joker,
+    });
+    onClose();
   };
 
-  const handleColorChange = (color: string) => {
-    onHabitChange({ ...habit, color });
-  };
-
-  const handleMultipleToggle = () => {
-    onHabitChange({ ...habit, allowMultiplePerDay: !habit.allowMultiplePerDay });
-  };
-
-  const handleTargetChange = (value: number) => {
-    onHabitChange({ ...habit, targetPerDay: Math.max(1, Math.min(99, value)) });
+  const itemStyle: React.CSSProperties = {
+    display: "flex", justifyContent: "space-between", alignItems: "center",
+    padding: "10px 0", borderBottom: "1px solid var(--hairline)",
   };
 
   return (
-    <div className="flex items-center gap-3 mb-2 flex-wrap">
-      {/* Cadencia editable */}
-      <div className="flex items-center gap-2">
-        <span className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
-          Cadencia:
-        </span>
-        {isEditingCadence ? (
-          <select
-            value={habit.cadence || "daily"}
-            onChange={(e) => handleCadenceChange(e.target.value as Cadence)}
-            onBlur={() => setIsEditingCadence(false)}
-            autoFocus
-            className={`text-xs px-2 py-1 rounded-lg border ${
-              darkMode
-                ? "bg-gray-800 border-gray-700 text-white"
-                : "bg-white border-gray-300 text-gray-900"
-            }`}
-          >
+    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.2)", backdropFilter: "blur(4px)" }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--hairline)", padding: 24, width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.12)" }}>
+        <h2 className="display" style={{ fontSize: 18, fontWeight: 600, color: "var(--ink)", margin: "0 0 8px" }}>Configuración</h2>
+        <p style={{ fontSize: 14, color: "var(--ink)", margin: "0 0 16px" }}>{habit.title}</p>
+
+        {/* Cadence */}
+        <div style={itemStyle}>
+          <span style={{ fontSize: 14, color: "var(--ink)" }}>Cadencia</span>
+          <select value={cadence} onChange={e => setCadence(e.target.value)}
+            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--hairline)", background: "var(--bg)", fontSize: 13, color: "var(--ink)", fontFamily: "inherit", cursor: "pointer" }}>
             <option value="daily">Diaria</option>
             <option value="weekly">Semanal</option>
-            <option value="custom">Personalizada</option>
           </select>
-        ) : (
-          <button
-            onClick={() => setIsEditingCadence(true)}
-            className={`text-xs px-2 py-1 rounded-lg hover:bg-gray-700 transition-colors ${
-              darkMode ? "text-gray-300" : "text-gray-700 hover:bg-gray-100"
-            }`}
-            title="Clic para cambiar"
-          >
-            {habit.cadence === "weekly"
-              ? "Semanal"
-              : habit.cadence === "custom"
-              ? "Personalizada"
-              : "Diaria"}
+        </div>
+
+        {/* Target */}
+        <div style={itemStyle}>
+          <span style={{ fontSize: 14, color: "var(--ink)" }}>Meta diaria</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={() => setTarget(Math.max(1, target - 1))} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid var(--hairline)", background: "transparent", cursor: "pointer", color: "var(--ink)", fontSize: 16, fontFamily: "inherit" }}>−</button>
+            <span className="display tnum" style={{ fontSize: 16, fontWeight: 500, minWidth: 24, textAlign: "center", color: "var(--ink)" }}>{target}</span>
+            <button onClick={() => setTarget(Math.min(99, target + 1))} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid var(--hairline)", background: "transparent", cursor: "pointer", color: "var(--ink)", fontSize: 16, fontFamily: "inherit" }}>+</button>
+          </div>
+        </div>
+
+        {/* Color */}
+        <div style={itemStyle}>
+          <span style={{ fontSize: 14, color: "var(--ink)" }}>Color</span>
+          <div style={{ display: "flex", gap: 5 }}>
+            {COLORS.map(c => (
+              <button key={c} onClick={() => setColor(c)} style={{
+                width: 24, height: 24, borderRadius: "50%", background: c,
+                border: color === c ? "2px solid var(--ink)" : "2px solid transparent",
+                cursor: "pointer", transition: "all 120ms ease",
+              }} />
+            ))}
+          </div>
+        </div>
+
+        {/* Multiple per day */}
+        <div style={itemStyle}>
+          <span style={{ fontSize: 14, color: "var(--ink)" }}>Múltiple por día</span>
+          <button onClick={() => setMultiple(!multiple)} style={{
+            width: 40, height: 22, borderRadius: 11, border: "none",
+            background: multiple ? "var(--ink)" : "var(--hairline)",
+            cursor: "pointer", position: "relative", transition: "background 150ms ease",
+          }}>
+            <div style={{ width: 18, height: 18, borderRadius: "50%", background: "var(--inverse)", position: "absolute", top: 2, left: multiple ? 20 : 2, transition: "left 150ms ease" }} />
           </button>
-        )}
+        </div>
+
+        {/* Joker policy */}
+        <div style={itemStyle}>
+          <span style={{ fontSize: 14, color: "var(--ink)" }}>Días libres</span>
+          <select value={joker} onChange={e => setJoker(e.target.value)}
+            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--hairline)", background: "var(--bg)", fontSize: 13, color: "var(--ink)", fontFamily: "inherit", cursor: "pointer" }}>
+            <option value="none">Sin días libres</option>
+            <option value="weekly:1">1 por semana</option>
+            <option value="weekly:2">2 por semana</option>
+            <option value="monthly:3">3 por mes</option>
+          </select>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+          <button onClick={onClose} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--hairline)", background: "transparent", color: "var(--mute)", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Cancelar</button>
+          <button onClick={handleSave} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--ink)", color: "var(--inverse)", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit" }}>Guardar</button>
+        </div>
       </div>
-
-      {/* Color editable */}
-      <EditableColorPicker
-        color={habit.color || DEFAULT_HABIT_COLOR}
-        darkMode={darkMode}
-        onColorChange={handleColorChange}
-      />
-
-      {/* Múltiples por día - SOLO para hábitos diarios */}
-      {habit.cadence === 'daily' && (
-        <div className="flex items-center gap-2">
-          <span className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
-            Múltiple:
-          </span>
-          <button
-            onClick={handleMultipleToggle}
-            className={`text-xs px-2 py-1 rounded-lg transition-colors ${
-              habit.allowMultiplePerDay
-                ? darkMode
-                  ? "bg-green-900/30 text-green-400"
-                  : "bg-green-100 text-green-700"
-                : darkMode
-                ? "text-gray-500 hover:bg-gray-800"
-                : "text-gray-500 hover:bg-gray-100"
-            }`}
-          >
-            {habit.allowMultiplePerDay ? "Sí" : "No"}
-          </button>
-        </div>
-      )}
-
-      {/* Meta diaria (solo si allowMultiplePerDay está activo Y es diario) */}
-      {habit.allowMultiplePerDay && habit.cadence === 'daily' && (
-        <div className="flex items-center gap-2">
-          <span className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
-            Meta:
-          </span>
-          <input
-            type="number"
-            min="1"
-            max="99"
-            value={habit.targetPerDay || 1}
-            onChange={(e) => handleTargetChange(parseInt(e.target.value) || 1)}
-            className={`text-xs px-2 py-1 rounded-lg w-14 text-center border ${
-              darkMode
-                ? "bg-gray-800 border-gray-700 text-white"
-                : "bg-white border-gray-300 text-gray-900"
-            }`}
-          />
-          <span className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
-            veces/día
-          </span>
-        </div>
-      )}
     </div>
   );
 }

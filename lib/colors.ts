@@ -23,3 +23,6 @@ export const HABIT_COLORS = [
 
 export const DEFAULT_HABIT_COLOR = HABIT_COLORS[0]; // #22C55E
 
+// Minimal set for pickers
+export const COLORS = ["#111111", "#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4"];
+

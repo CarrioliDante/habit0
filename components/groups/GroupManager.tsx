@@ -1,207 +1,102 @@
 "use client";
 import { useState } from "react";
-import { Modal } from "@/components/ui/Modal";
-import { Button } from "@/components/ui/Button";
-import { IconPicker } from "@/components/ui/IconPicker";
-import { ColorPicker } from "@/components/ui/ColorPicker";
-import type { Group, CreateGroupRequest } from "@/types";
-import { HABIT_COLORS } from "@/lib/colors";
+import type { Group } from "@/types";
+import { ICON_LIST } from "@/lib/icons";
+import { HabitIcon } from "@/components/ui/habit-icon";
 import { addToGroupsSyncQueue } from "@/lib/groupsSyncQueue";
 import { addGroupToCache, updateGroupInCache } from "@/lib/groupsCache";
+
+const COLORS = ["#111111", "#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4"];
 
 interface GroupManagerProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  darkMode: boolean;
-  group?: Group; // Si se pasa, es edición; si no, es creación
+  group?: Group;
 }
 
-export function GroupManager({
-  isOpen,
-  onClose,
-  onSuccess,
-  darkMode,
-  group,
-}: GroupManagerProps) {
+export function GroupManager({ isOpen, onClose, onSuccess, group }: GroupManagerProps) {
   const [name, setName] = useState(group?.name || "");
-  const [color, setColor] = useState(group?.color || HABIT_COLORS[0]);
-  const [icon, setIcon] = useState(group?.icon || "Tag");
+  const [color, setColor] = useState(group?.color || COLORS[0]);
+  const [icon, setIcon] = useState(group?.icon || "tag");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-
-    if (!name.trim()) {
-      setError("El nombre del grupo es obligatorio");
-      return;
-    }
-
+    if (!name.trim()) { setError("El nombre es obligatorio"); return; }
     setLoading(true);
-
     try {
-      const body: CreateGroupRequest = {
-        name: name.trim(),
-        color,
-        icon,
-      };
-
-      if (group) {
-        // Editar grupo existente
-        // 1) Actualizar optimistamente en caché
-        updateGroupInCache(group.id, body);
-
-        // 2) Agregar a cola de sincronización
-        addToGroupsSyncQueue({
-          type: "update",
-          groupId: group.id,
-          data: body,
-        });
-
-        // 3) Intentar sincronizar inmediatamente en background
-        fetch(`/api/groups/${group.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }).catch(err => {
-          console.error("Background sync failed, will retry later:", err);
-        });
-
-        // 4) Notificar éxito inmediatamente
-        onSuccess();
-        handleClose();
-      } else {
-        // Crear nuevo grupo
-        const tempId = `temp-${Date.now()}`;
-        const tempGroup: Group = {
-          id: -Date.now(), // ID temporal negativo
-          userId: -1, // Se llenará en el servidor
-          name: body.name,
-          color: body.color || HABIT_COLORS[0],
-          icon: body.icon || "Tag",
-          createdAt: new Date().toISOString(),
-        };
-
-        // 1) Agregar optimistamente al caché
-        addGroupToCache(tempGroup);
-
-        // 2) Agregar a cola de sincronización
-        addToGroupsSyncQueue({
-          type: "create",
-          data: { ...body, tempId },
-        });
-
-        // 3) Cerrar modal y notificar éxito inmediatamente (sin recargar)
-        onSuccess();
-        handleClose();
-
-        // 4) Intentar crear en background (sin esperar)
-        fetch("/api/groups", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }).catch(err => {
-          console.error("Background sync failed, will retry later:", err);
-        });
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al guardar grupo");
-    } finally {
-      setLoading(false);
-    }
+      const body = { name: name.trim(), color, icon };
+      const method = group ? "PATCH" : "POST";
+      const url = group ? `/api/groups/${group.id}` : "/api/groups";
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!res.ok) throw new Error("Error al guardar");
+      const data = await res.json();
+      const saved = data?.data || data;
+      if (group) { updateGroupInCache(saved); } else { addGroupToCache(saved); }
+      addToGroupsSyncQueue(group ? "update" : "create", saved);
+      onSuccess();
+      onClose();
+    } catch (e: any) { setError(e.message); }
+    setLoading(false);
   };
 
-  const handleClose = () => {
-    setName(group?.name || "");
-    setColor(group?.color || HABIT_COLORS[0]);
-    setIcon(group?.icon || "Tag");
-    setError("");
-    onClose();
+  const handleDelete = async () => {
+    if (!group) return;
+    setLoading(true);
+    try {
+      await fetch(`/api/groups/${group.id}`, { method: "DELETE" });
+      addToGroupsSyncQueue("delete", group);
+      onSuccess();
+      onClose();
+    } catch (e: any) { setError(e.message); }
+    setLoading(false);
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title={group ? "Editar Grupo" : "Nuevo Grupo"}>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Nombre */}
-        <div>
-          <label
-            htmlFor="group-name"
-            className={`block text-sm font-medium mb-2 ${
-              darkMode ? "text-gray-200" : "text-gray-700"
-            }`}
-          >
-            Nombre del grupo
-          </label>
-          <input
-            id="group-name"
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Ej: Salud, Trabajo, Fitness..."
-            className={`w-full px-3 py-2 border rounded-lg ${
-              darkMode
-                ? "bg-gray-800 border-gray-700 text-white placeholder-gray-500"
-                : "bg-white border-gray-300 text-gray-900 placeholder-gray-400"
-            }`}
-            autoFocus
-          />
-        </div>
-
-        {/* Color */}
-        <div>
-          <label
-            className={`block text-sm font-medium mb-2 ${
-              darkMode ? "text-gray-200" : "text-gray-700"
-            }`}
-          >
-            Color
-          </label>
-          <ColorPicker value={color} onChange={setColor} />
-        </div>
-
-        {/* Icono */}
-        <div>
-          <label
-            className={`block text-sm font-medium mb-2 ${
-              darkMode ? "text-gray-200" : "text-gray-700"
-            }`}
-          >
-            Icono
-          </label>
-          <IconPicker value={icon} onChange={setIcon} darkMode={darkMode} />
-        </div>
-
-        {/* Error */}
-        {error && (
-          <div
-            className={`p-3 rounded-lg text-sm ${
-              darkMode
-                ? "bg-red-900/20 border border-red-800 text-red-300"
-                : "bg-red-50 border border-red-200 text-red-700"
-            }`}
-          >
-            {error}
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.2)", backdropFilter: "blur(4px)" }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", borderRadius: 12, border: "1px solid var(--hairline)", padding: 24, width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.12)" }}>
+        <h2 className="display" style={{ fontSize: 18, fontWeight: 600, color: "var(--ink)", margin: "0 0 20px" }}>{group ? "Editar grupo" : "Nuevo grupo"}</h2>
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {error && <p style={{ fontSize: 12, color: "var(--mute)", margin: 0 }}>{error}</p>}
+          <input autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Nombre del grupo"
+            style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid var(--hairline)", background: "var(--bg)", fontSize: 14, color: "var(--ink)", outline: "none", fontFamily: "inherit" }} />
+          {/* Color */}
+          <div>
+            <div className="mono" style={{ fontSize: 9, color: "var(--faint)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>Color</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {COLORS.map(c => (
+                <button key={c} type="button" onClick={() => setColor(c)} style={{ width: 28, height: 28, borderRadius: "50%", background: c, border: color === c ? "2px solid var(--ink)" : "2px solid transparent", cursor: "pointer", transition: "all 120ms ease", outline: "none" }} />
+              ))}
+            </div>
           </div>
-        )}
-
-        {/* Botones */}
-        <div className="flex gap-3 pt-4">
-          <Button
-            type="button"
-            onClick={handleClose}
-            variant="secondary"
-            disabled={loading}
-            className="flex-1"
-          >
-            Cancelar
-          </Button>
-          <Button type="submit" disabled={loading} className="flex-1">
-            {loading ? "Guardando..." : group ? "Guardar" : "Crear Grupo"}
-          </Button>
-        </div>
-      </form>
-    </Modal>
+          {/* Icon */}
+          <div>
+            <div className="mono" style={{ fontSize: 9, color: "var(--faint)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>Ícono</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+              {ICON_LIST.map(name => (
+                <button key={name} type="button" onClick={() => setIcon(name)} style={{ width: 32, height: 32, borderRadius: 6, border: icon === name ? "1.5px solid var(--ink)" : "1px solid var(--hairline)", background: icon === name ? "var(--whisper)" : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <HabitIcon name={name} size={14} color={icon === name ? "var(--ink)" : "var(--faint)"} />
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+            {group && (
+              <button type="button" onClick={handleDelete} disabled={loading}
+                style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--hairline)", background: "transparent", color: "var(--mute)", fontSize: 13, cursor: "pointer", fontFamily: "inherit", opacity: loading ? 0.5 : 1 }}>Eliminar</button>
+            )}
+            <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
+              <button type="button" onClick={onClose} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--hairline)", background: "transparent", color: "var(--mute)", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Cancelar</button>
+              <button type="submit" disabled={loading || !name.trim()} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "var(--ink)", color: "var(--inverse)", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", opacity: loading ? 0.5 : 1 }}>{loading ? "Guardando..." : group ? "Guardar" : "Crear"}</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }

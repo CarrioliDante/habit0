@@ -8,6 +8,7 @@ import { useTheme } from "@/components/providers/theme-provider";
 const NAV = [
   { href: "/dashboard", label: "Inicio" },
   { href: "/rutinas", label: "Rutinas" },
+  { href: "/analytics", label: "Analytics" },
 ];
 
 export function TopNav() {

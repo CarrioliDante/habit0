@@ -99,8 +99,8 @@ export async function POST(req: Request) {
             note: note ?? checkins.note,
           }
         : note
-        ? { note }
-        : {},
+        ? { count: checkins.count, note }
+        : { count: checkins.count },
     })
     .returning();
 
