@@ -1,29 +1,113 @@
 @import "tailwindcss";
 
+/* ─── Light tokens ──────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg:          #F5F5F2;
+  --surface:     #FAFAF8;
+  --surface-alt: #EFEEE9;
+  --ink:         #111111;
+  --ink-deep:    #0A0A0A;
+  --inverse:     #FAFAF8;
+  --mute:        rgba(0,0,0,0.50);
+  --faint:       rgba(0,0,0,0.32);
+  --whisper:     rgba(0,0,0,0.08);
+  --hairline:    rgba(0,0,0,0.07);
+  --hairline2:   rgba(0,0,0,0.12);
 }
 
+/* ─── Dark tokens ───────────────────────────────────────────── */
+[data-theme="dark"] {
+  --bg:          #0A0A0A;
+  --surface:     #101010;
+  --surface-alt: #161614;
+  --ink:         #F4F3EE;
+  --ink-deep:    #FFFFFF;
+  --inverse:     #0A0A0A;
+  --mute:        rgba(244,243,238,0.55);
+  --faint:       rgba(244,243,238,0.35);
+  --whisper:     rgba(244,243,238,0.08);
+  --hairline:    rgba(244,243,238,0.08);
+  --hairline2:   rgba(244,243,238,0.14);
+}
+
+/* ─── Tailwind theme ────────────────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-
-  /* Custom breakpoint para pantallas pequeñas (480px) */
-  --breakpoint-xs: 30rem;
+  --color-bg:          var(--bg);
+  --color-surface:     var(--surface);
+  --color-surface-alt: var(--surface-alt);
+  --color-ink:         var(--ink);
+  --color-ink-deep:    var(--ink-deep);
+  --color-mute:        var(--mute);
+  --color-faint:       var(--faint);
+  --color-whisper:     var(--whisper);
+  --color-hairline:    var(--hairline);
+  --color-hairline2:   var(--hairline2);
+  --font-sans: 'Inter', -apple-system, system-ui, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ─── Base ──────────────────────────────────────────────────── */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html {
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    font-feature-settings: 'ss01' on, 'cv11' on;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: var(--bg);
+    color: var(--ink);
+    height: 100%;
+    transition: background 400ms ease, color 400ms ease;
   }
+
+  body { margin: 0; padding: 0; height: 100%; }
+
+  * { scrollbar-width: thin; scrollbar-color: var(--hairline2) transparent; }
+  *::-webkit-scrollbar { width: 5px; height: 5px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb { background: var(--hairline2); border-radius: 99px; }
+
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type="number"] { -moz-appearance: textfield; }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ─── Typography ────────────────────────────────────────────── */
+.display {
+  font-family: 'Inter Tight', 'Inter', sans-serif;
+  letter-spacing: -0.035em;
 }
+.mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' on, 'ss01' on;
+}
+.body-font { font-family: inherit; }
+
+/* ─── Interaction ───────────────────────────────────────────── */
+.row-hover { transition: background 120ms ease; }
+.row-hover:hover { background: var(--whisper); }
+
+.kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 18px; min-width: 18px; padding: 0 5px; border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; font-weight: 500; letter-spacing: 0.02em;
+  background: var(--whisper);
+  box-shadow: inset 0 0 0 1px var(--hairline2);
+  color: var(--mute);
+  white-space: nowrap;
+}
+
+/* ─── No-animations override ────────────────────────────────── */
+.no-animations * {
+  animation-duration: 0s !important;
+  transition-duration: 0s !important;
+}
+
+/* ─── Animations ────────────────────────────────────────────── */
+@keyframes h0-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes h0-rise { from { opacity: 0; transform: translateY(-8px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes h0-pop  { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.06); opacity: 1; } 100% { transform: scale(1); } }
