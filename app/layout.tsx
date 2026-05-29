@@ -3,7 +3,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 
 export const metadata = {
-  title: "habit0",
+  title: "habit.ar",
   description: "Tus hábitos, sin ruido.",
   icons: {
     icon: "/favicon.ico",

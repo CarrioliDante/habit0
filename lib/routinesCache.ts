@@ -4,8 +4,8 @@
 
 import type { Routine, RoutineProgress } from "@/types";
 
-const ROUTINES_CACHE_KEY = "habit0_routines_cache";
-const ROUTINE_PROGRESS_CACHE_KEY = "habit0_routine_progress_cache";
+const ROUTINES_CACHE_KEY = "habitar_routines_cache";
+const ROUTINE_PROGRESS_CACHE_KEY = "habitar_routine_progress_cache";
 
 // Rutinas principales
 export function getCachedRoutines(): Routine[] | null {

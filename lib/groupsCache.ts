@@ -4,8 +4,8 @@
 
 import type { Group } from "@/types";
 
-const GROUPS_CACHE_KEY = "habit0_groups_cache";
-const HABIT_GROUPS_CACHE_KEY = "habit0_habit_groups_cache";
+const GROUPS_CACHE_KEY = "habitar_groups_cache";
+const HABIT_GROUPS_CACHE_KEY = "habitar_habit_groups_cache";
 
 // Grupos principales
 export function getCachedGroups(): Group[] | null {

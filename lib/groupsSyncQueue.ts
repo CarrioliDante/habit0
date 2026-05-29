@@ -4,7 +4,7 @@
 
 import type { Group } from "@/types";
 
-const GROUPS_SYNC_QUEUE_KEY = "habit0_groups_sync_queue";
+const GROUPS_SYNC_QUEUE_KEY = "habitar_groups_sync_queue";
 
 export type GroupOperation =
   | { type: "create"; data: Omit<Group, "id" | "userId" | "createdAt"> & { tempId: string } }

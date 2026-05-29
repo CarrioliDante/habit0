@@ -4,7 +4,7 @@
 
 import type { Routine } from "@/types";
 
-const ROUTINES_SYNC_QUEUE_KEY = "habit0_routines_sync_queue";
+const ROUTINES_SYNC_QUEUE_KEY = "habitar_routines_sync_queue";
 
 export type RoutineOperation =
   | {

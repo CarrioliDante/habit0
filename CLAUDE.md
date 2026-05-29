@@ -1,6 +1,6 @@
 @AGENTS.md
 
-# Habit0
+### habit.ar
 
 Habit tracker minimalista. Next.js 15 App Router + Drizzle ORM + Neon PostgreSQL + Clerk Auth.
 

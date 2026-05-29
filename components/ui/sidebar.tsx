@@ -98,7 +98,7 @@ export function Sidebar() {
               habit
             </span>
             <em style={{ fontSize: 12, fontStyle: "italic", fontWeight: 400, letterSpacing: "-0.04em", color: "var(--ink)", whiteSpace: "nowrap", fontFamily: "'Newsreader', Georgia, serif" }}>
-              .0
+              .ar
             </em>
             <div className="mono" style={{ fontSize: 9, color: "var(--faint)", letterSpacing: "0.06em", marginTop: 1, whiteSpace: "nowrap" }}>
               tracker

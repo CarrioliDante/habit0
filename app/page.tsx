@@ -40,7 +40,7 @@ export default function Home() {
             <circle cx="35" cy="18" r="1.5" fill="var(--inverse)" />
           </svg>
           <h1 style={{ fontFamily: "'Inter Tight', sans-serif", fontSize: 28, fontWeight: 600, color: "var(--ink)", letterSpacing: "-0.03em", margin: 0 }}>
-            habit<span style={{ fontFamily: "'Newsreader', Georgia, serif", fontStyle: "italic", letterSpacing: "-0.04em" }}>.0</span>
+            habit<span style={{ fontFamily: "'Newsreader', Georgia, serif", fontStyle: "italic", letterSpacing: "-0.04em" }}>.ar</span>
           </h1>
         </div>
 
