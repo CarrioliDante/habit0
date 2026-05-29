@@ -1,220 +1,126 @@
 "use client";
 import { useState } from "react";
-import * as LucideIcons from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import type { Routine, RoutineProgress, Habit } from "@/types";
 
-type RoutineWithHabits = Routine & {
-  habits: Habit[];
-  progress?: RoutineProgress;
-};
+type RoutineWithHabits = Routine & { habits: Habit[]; progress?: RoutineProgress };
 
 interface RoutineCardProps {
   routine: RoutineWithHabits;
-  darkMode: boolean;
   onToggleHabit?: (routineId: number, habitId: number, isChecked: boolean) => void;
   onEdit?: (routine: Routine) => void;
   onDelete?: (routineId: number) => void;
 }
 
-export function RoutineCard({
-  routine,
-  darkMode,
-  onToggleHabit,
-  onEdit,
-  onDelete,
-}: RoutineCardProps) {
+export function RoutineCard({ routine, onToggleHabit, onEdit, onDelete }: RoutineCardProps) {
   const [localProgress, setLocalProgress] = useState(routine.progress);
-
-  const Icon = (LucideIcons[routine.icon as keyof typeof LucideIcons] ||
-    LucideIcons.ListChecks) as LucideIcon;
-
   const progress = localProgress || routine.progress;
-  const percentage = progress
-    ? Math.round((progress.completedHabits / progress.totalHabits) * 100)
-    : 0;
+  const pct = progress ? Math.round((progress.completedHabits / progress.totalHabits) * 100) : 0;
 
-  const handleToggleHabit = (habitId: number) => {
+  const handleToggle = (habitId: number) => {
     if (!progress || !onToggleHabit) return;
-
-    const habitProgress = progress.habits.find((h) => h.habitId === habitId);
-    if (!habitProgress) return;
-
-    const newIsChecked = !habitProgress.isChecked;
-
-    // Actualización optimista
-    const updatedHabits = progress.habits.map((h) =>
-      h.habitId === habitId ? { ...h, isChecked: newIsChecked } : h
-    );
-
-    const completedCount = updatedHabits.filter((h) => h.isChecked).length;
-    const isComplete = completedCount === progress.totalHabits;
-
-    setLocalProgress({
-      ...progress,
-      habits: updatedHabits,
-      completedHabits: completedCount,
-      isComplete,
-    });
-
-    // Llamar al callback para sincronizar
-    onToggleHabit(routine.id, habitId, newIsChecked);
+    const hp = progress.habits.find(h => h.habitId === habitId);
+    if (!hp) return;
+    const checked = !hp.isChecked;
+    const updated = progress.habits.map(h => h.habitId === habitId ? { ...h, isChecked: checked } : h);
+    const done = updated.filter(h => h.isChecked).length;
+    setLocalProgress({ ...progress, habits: updated, completedHabits: done, isComplete: done === progress.totalHabits });
+    onToggleHabit(routine.id, habitId, checked);
   };
 
   return (
-    <div
-      className={`rounded-xl border p-4 sm:p-6 transition-all ${
-        darkMode
-          ? "bg-gray-800/50 border-gray-700/50 hover:bg-gray-800/70"
-          : "bg-white/80 border-gray-200/50 hover:shadow-lg"
-      }`}
-    >
-      {/* Header - responsive */}
-      <div className="flex items-start justify-between mb-3 sm:mb-4">
-        <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-          <div
-            className="p-1.5 sm:p-2 rounded-lg shrink-0"
-            style={{
-              backgroundColor: `${routine.color}20`,
-              color: routine.color,
-            }}
-          >
-            <Icon className="w-5 h-5 sm:w-6 sm:h-6" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3
-              className={`font-semibold text-base sm:text-lg truncate ${
-                darkMode ? "text-white" : "text-gray-900"
-              }`}
-            >
-              {routine.name}
-            </h3>
-            {routine.description && (
-              <p
-                className={`text-xs sm:text-sm line-clamp-2 ${
-                  darkMode ? "text-gray-400" : "text-gray-600"
-                }`}
-              >
-                {routine.description}
-              </p>
-            )}
-          </div>
+    <div style={{
+      borderRadius: 10, border: "1px solid var(--hairline)",
+      background: "var(--surface)", padding: "20px 24px",
+      transition: "border-color 120ms ease",
+    }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", margin: 0 }}>{routine.name}</h3>
+          {routine.description && (
+            <p style={{ fontSize: 13, color: "var(--mute)", margin: "4px 0 0", lineHeight: 1.4 }}>{routine.description}</p>
+          )}
         </div>
-
-        {/* Botones de acción - responsive */}
-        <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
+        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
           {onEdit && (
-            <button
-              onClick={() => onEdit(routine)}
-              className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
-                darkMode
-                  ? "hover:bg-gray-700 text-gray-400 hover:text-gray-200"
-                  : "hover:bg-gray-100 text-gray-600 hover:text-gray-900"
-              }`}
-              title="Editar rutina"
-            >
-              <LucideIcons.Edit3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <button onClick={() => onEdit(routine)} className="row-hover" style={{
+              padding: 6, borderRadius: 6, border: "none", background: "transparent",
+              cursor: "pointer", color: "var(--faint)",
+            }} title="Editar">
+              <svg width="14" height="14" viewBox="0 0 18 18" fill="none">
+                <path d="M3 15h3l8.5-8.5a1.5 1.5 0 0 0-2.1-2.1L4 13v2z" stroke="currentColor" strokeWidth="1.3" fill="none" />
+                <line x1="13" y1="4" x2="15" y2="6" stroke="currentColor" strokeWidth="1.3" />
+              </svg>
             </button>
           )}
           {onDelete && (
-            <button
-              onClick={() => onDelete(routine.id)}
-              className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
-                darkMode
-                  ? "hover:bg-red-900/20 text-gray-400 hover:text-red-400"
-                  : "hover:bg-red-50 text-gray-600 hover:text-red-600"
-              }`}
-              title="Eliminar rutina"
-            >
-              <LucideIcons.Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <button onClick={() => onDelete(routine.id)} className="row-hover" style={{
+              padding: 6, borderRadius: 6, border: "none", background: "transparent",
+              cursor: "pointer", color: "var(--faint)",
+            }} title="Eliminar">
+              <svg width="14" height="14" viewBox="0 0 18 18" fill="none">
+                <path d="M4 5h10M7 5V3.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V5M6 5v9a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V5" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinecap="round" />
+              </svg>
             </button>
           )}
         </div>
       </div>
 
-      {/* Progress bar - responsive */}
+      {/* Progress */}
       {progress && (
-        <div className="mb-3 sm:mb-4">
-          <div className="flex items-center justify-between mb-1.5 sm:mb-2">
-            <span className={`text-xs sm:text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
-              {progress.completedHabits} / {progress.totalHabits} completados
-            </span>
-            <span
-              className={`text-xs sm:text-sm font-semibold ${
-                progress.isComplete
-                  ? "text-green-500"
-                  : darkMode
-                  ? "text-gray-400"
-                  : "text-gray-600"
-              }`}
-            >
-              {percentage}%
-            </span>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+            <span style={{ fontSize: 12, color: "var(--mute)" }}>{progress.completedHabits} / {progress.totalHabits}</span>
+            <span className="mono" style={{ fontSize: 11, color: "var(--mute)", letterSpacing: "0.08em" }}>{pct}%</span>
           </div>
-          <div
-            className={`h-2 rounded-full overflow-hidden ${
-              darkMode ? "bg-gray-700" : "bg-gray-200"
-            }`}
-          >
-            <div
-              className={`h-full transition-all duration-300 ${
-                progress.isComplete ? "bg-green-500" : "bg-green-500"
-              }`}
-              style={{ width: `${percentage}%` }}
-            />
+          <div style={{ height: 4, borderRadius: 2, background: "var(--hairline)", overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${pct}%`, background: "var(--ink)", borderRadius: 2, transition: "width 300ms ease" }} />
           </div>
         </div>
       )}
 
-      {/* Lista de hábitos - responsive */}
-      <div className="space-y-1.5 sm:space-y-2">
-        {progress?.habits.map((habit) => (
-          <button
-            key={habit.habitId}
-            onClick={() => handleToggleHabit(habit.habitId)}
-            disabled={!onToggleHabit}
-            className={`w-full flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg transition-all ${
-              darkMode
-                ? "bg-gray-700/30 hover:bg-gray-700/50"
-                : "bg-gray-100/50 hover:bg-gray-100"
-            } ${!onToggleHabit && "cursor-default"}`}
-          >
-            <div
-              className={`w-4 h-4 sm:w-5 sm:h-5 rounded border-2 flex items-center justify-center transition-all shrink-0 ${
-                habit.isChecked
-                  ? "bg-green-500 border-green-500"
-                  : darkMode
-                  ? "border-gray-600"
-                  : "border-gray-300"
-              }`}
-            >
-              {habit.isChecked && (
-                <LucideIcons.Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white" />
+      {/* Habits list */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {progress?.habits.map(h => (
+          <button key={h.habitId} onClick={() => handleToggle(h.habitId)} disabled={!onToggleHabit}
+            className="row-hover"
+            style={{
+              width: "100%", display: "flex", alignItems: "center", gap: 10,
+              padding: "8px 10px", borderRadius: 6,
+              border: "none", background: "transparent", cursor: onToggleHabit ? "pointer" : "default",
+              fontFamily: "inherit", textAlign: "left",
+            }}>
+            {/* Check circle */}
+            <span style={{
+              width: 20, height: 20, borderRadius: "50%",
+              border: h.isChecked ? "none" : "1.5px solid var(--faint)",
+              background: h.isChecked ? "var(--ink)" : "transparent",
+              flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "all 150ms ease",
+            }}>
+              {h.isChecked && (
+                <svg width="10" height="10" viewBox="0 0 12 12">
+                  <path d="M2 6l3 3 5-5" stroke="var(--inverse)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               )}
-            </div>
-            <span
-              className={`text-xs sm:text-sm flex-1 text-left transition-all ${
-                habit.isChecked
-                  ? darkMode
-                    ? "text-gray-300 line-through"
-                    : "text-gray-600 line-through"
-                  : darkMode
-                  ? "text-gray-200"
-                  : "text-gray-900"
-              }`}
-            >
-              {habit.title}
             </span>
+            <span style={{
+              flex: 1, fontSize: 13, color: h.isChecked ? "var(--mute)" : "var(--ink)",
+              textDecoration: h.isChecked ? "line-through" : "none",
+              textDecorationColor: "var(--faint)",
+            }}>{h.title}</span>
           </button>
         ))}
       </div>
 
-      {/* Badge de completado - responsive */}
+      {/* Complete badge */}
       {progress?.isComplete && (
-        <div className="mt-3 sm:mt-4 flex items-center justify-center gap-1.5 sm:gap-2 p-2 sm:p-3 rounded-lg bg-green-500/20 border border-green-500/30">
-          <LucideIcons.CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-500" />
-          <span className="text-xs sm:text-sm font-semibold text-green-500">
-            ¡Rutina completada!
+        <div style={{
+          marginTop: 16, padding: "10px 14px", borderRadius: 8,
+          background: "var(--whisper)", textAlign: "center",
+        }}>
+          <span className="mono" style={{ fontSize: 10, color: "var(--mute)", letterSpacing: "0.12em", textTransform: "uppercase" }}>
+            Completada
           </span>
         </div>
       )}

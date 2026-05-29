@@ -1,629 +1,125 @@
 "use client";
-import { useCallback, useMemo, useState } from "react";
-import * as LucideIcons from "lucide-react";
-import { CalendarCheck, CalendarClock, CalendarRange, Flame } from "lucide-react";
-import type { ComponentType } from "react";
-import { format, parseISO, eachDayOfInterval, startOfWeek, endOfWeek } from "date-fns";
-import { es } from "date-fns/locale";
-import { normalizeIconValue } from "@/lib/iconUtils";
-import { DEFAULT_HABIT_COLOR } from "@/lib/colors";
-import { Habit, Group } from "@/types";
-import { HabitHeatmap } from "./HabitHeatmap";
-import { HabitDetailModal } from "./HabitDetailModal";
-import { HabitCalendar } from "./HabitCalendar";
+import { useCallback, useState } from "react";
+import { format } from "date-fns";
+import type { Habit, Group } from "@/types";
 
 interface HabitCardProps {
   habit: Habit;
   checkins: Record<string, number>;
   streak: number;
   dateRange: { from: string; to: string };
-  viewMode?: "default" | "week" | "month";
-  darkMode: boolean;
-  groups?: Group[]; // Grupos a los que pertenece el hábito
-  allGroups?: Group[]; // Todos los grupos disponibles
+  groups?: Group[];
   onCheckin: (habitId: number) => void;
   onEdit: (habit: Habit) => void;
   onArchive: (habitId: number) => void;
   onDelete: (habitId: number) => void;
-  onBatchUpdateCheckins: (habitId: number, updates: Array<{ date: string; count: number }>) => void;
-  onGroupsChange?: () => void; // Callback cuando cambian los grupos
   loading: boolean;
 }
 
-/**
- * Card individual de hábito con heatmap como protagonista
- */
 export function HabitCard({
-  habit,
-  checkins,
-  streak,
-  dateRange,
-  viewMode = "default",
-  darkMode,
-  groups = [],
-  allGroups = [],
-  onCheckin,
-  onEdit,
-  onArchive,
-  onDelete,
-  onBatchUpdateCheckins,
-  onGroupsChange,
-  loading,
+  habit, checkins, streak, groups, onCheckin, onEdit, onArchive, onDelete, loading,
 }: HabitCardProps) {
-  const [showDetailModal, setShowDetailModal] = useState(false);
-
-  // Lógica para el botón de check-in
-  const today = new Date();
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
-  let count = checkins[todayStr] || 0;
-  const segments = habit.targetPerDay || 1;
-  const hex = habit.color || DEFAULT_HABIT_COLOR;
-  const hexToRgba = (hex: string, alpha: number) => {
-    let c = hex.replace('#', '');
-    if (c.length === 3) c = c.split('').map(x => x + x).join('');
-    const r = parseInt(c.substring(0,2),16);
-    const g = parseInt(c.substring(2,4),16);
-    const b = parseInt(c.substring(4,6),16);
-    return `rgba(${r},${g},${b},${alpha})`;
-  };
-  const bgColor = hexToRgba(hex, darkMode ? 0.18 : 0.13);
-  const Icons = LucideIcons as unknown as Record<string, unknown>;
-  const normalizedIcon = normalizeIconValue(habit.icon || "");
-  const HabitIcon = Icons[normalizedIcon || "Star"] as unknown as ComponentType<{ size?: number }> | undefined;
-  const StarFallback = Icons.Star as unknown as ComponentType<{ size?: number }> | undefined;
-  const cadenceMap: Record<string, { label: string; Icon: ComponentType<{ size?: number; className?: string }> }> = {
-    daily: { label: "Diario", Icon: CalendarCheck },
-    weekly: { label: "Semanal", Icon: CalendarRange },
-    custom: { label: "Personalizado", Icon: CalendarClock },
-  };
-  const cadenceBadge = cadenceMap[habit.cadence] || cadenceMap.daily;
-  const CadenceIcon = cadenceBadge.Icon;
-  const weekDates = useMemo(() => {
-    if (viewMode !== "week") return [];
-    try {
-      const start = startOfWeek(parseISO(dateRange.from), { weekStartsOn: 1 });
-      const end = endOfWeek(start, { weekStartsOn: 1 });
-      return eachDayOfInterval({ start, end });
-    } catch {
-      return [];
-    }
-  }, [viewMode, dateRange.from]);
-  const checkinsEntries = useMemo(() => Object.entries(checkins), [checkins]);
-  const weeklySelectedDates = useMemo(() => {
-    if (habit.cadence !== "weekly") return new Set<string>();
-    const selected = new Set<string>();
-    checkinsEntries.forEach(([date, count]) => {
-      if (count > 0) selected.add(date);
-    });
-    return selected;
-  }, [checkinsEntries, habit.cadence]);
-  const weeklyWeekKeys = useMemo(() => {
-    if (habit.cadence !== "weekly") return new Set<string>();
-    const weeks = new Set<string>();
-    weeklySelectedDates.forEach((date) => {
-      weeks.add(format(startOfWeek(parseISO(date), { weekStartsOn: 1 }), "yyyy-MM-dd"));
-    });
-    return weeks;
-  }, [weeklySelectedDates, habit.cadence]);
-  const colorWithAlpha = (alpha: number) => hexToRgba(hex, alpha);
-  const getWeekWindowFor = (date: Date) =>
-    eachDayOfInterval({
-      start: startOfWeek(date, { weekStartsOn: 1 }),
-      end: endOfWeek(date, { weekStartsOn: 1 }),
-    });
-  const getIntensityFromCount = (value: number): number => {
-    if (value === 0) return 0;
-    if (!habit.allowMultiplePerDay && value >= 1) return 5;
-    const rawTarget = habit.targetPerDay || 1;
-    const target = Math.max(1, Math.min(5, rawTarget));
-    const progress = value / target;
-    if (progress >= 0.81) return 5;
-    if (progress >= 0.61) return 4;
-    if (progress >= 0.41) return 3;
-    if (progress >= 0.21) return 2;
-    return 1;
-  };
-  const getWeeklyHighlightState = useCallback(
-    (date: Date): "selected" | "adjacent" | "none" => {
-      if (habit.cadence !== "weekly") return "none";
-      const dateStr = format(date, "yyyy-MM-dd");
-      if (weeklySelectedDates.has(dateStr) && (checkins[dateStr] || 0) > 0) {
-        return "selected";
-      }
-      const weekKey = format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd");
-      if (weeklyWeekKeys.has(weekKey)) {
-        return "adjacent";
-      }
-      return "none";
-    },
-    [habit.cadence, weeklySelectedDates, weeklyWeekKeys, checkins]
-  );
-  const getCalendarIntensity = (date: Date): number => {
-    const dateStr = format(date, "yyyy-MM-dd");
-    const count = checkins[dateStr] || 0;
-    return getIntensityFromCount(count);
-  };
-  const handleCalendarDayClick = (date: Date) => {
-    const dateStr = format(date, "yyyy-MM-dd");
-    if (dateStr > todayStr) return;
-    const currentCount = checkins[dateStr] || 0;
-
-    if (habit.cadence === "weekly") {
-      const willActivate = currentCount === 0;
-      const range = getWeekWindowFor(date);
-      const updates: Array<{ date: string; count: number }> = [];
-      range.forEach((d) => {
-        const dStr = format(d, "yyyy-MM-dd");
-        if (dStr === dateStr) {
-          updates.push({ date: dStr, count: willActivate ? 1 : 0 });
-        } else if (willActivate && (checkins[dStr] || 0) > 0) {
-          updates.push({ date: dStr, count: 0 });
-        }
-      });
-      if (updates.length > 0) {
-        onBatchUpdateCheckins(habit.id, updates);
-      }
-      return;
-    }
-
-    if (habit.allowMultiplePerDay) {
-      const maxCount = habit.targetPerDay || 1;
-      const next = currentCount >= maxCount ? 0 : currentCount + 1;
-      onBatchUpdateCheckins(habit.id, [{ date: dateStr, count: next }]);
-    } else {
-      const next = currentCount > 0 ? 0 : 1;
-      onBatchUpdateCheckins(habit.id, [{ date: dateStr, count: next }]);
-    }
-  };
-  const handleWeekCellToggle = (date: Date) => {
-    if (viewMode !== "week") return;
-    const dateStr = format(date, "yyyy-MM-dd");
-    if (dateStr > todayStr) return;
-    const currentCount = checkins[dateStr] || 0;
-
-    if (habit.cadence === "weekly") {
-      const willActivate = currentCount === 0;
-      const range = getWeekWindowFor(date);
-      const updates: Array<{ date: string; count: number }> = [];
-      range.forEach((d) => {
-        const dStr = format(d, "yyyy-MM-dd");
-        if (dStr === dateStr) {
-          updates.push({ date: dStr, count: willActivate ? 1 : 0 });
-        } else if (willActivate && (checkins[dStr] || 0) > 0) {
-          updates.push({ date: dStr, count: 0 });
-        }
-      });
-      if (updates.length > 0) onBatchUpdateCheckins(habit.id, updates);
-      return;
-    }
-
-    if (habit.allowMultiplePerDay) {
-      const maxCount = habit.targetPerDay || 1;
-      const next = currentCount >= maxCount ? 0 : currentCount + 1;
-      onBatchUpdateCheckins(habit.id, [{ date: dateStr, count: next }]);
-    } else {
-      const next = currentCount > 0 ? 0 : 1;
-      onBatchUpdateCheckins(habit.id, [{ date: dateStr, count: next }]);
-    }
-  };
-
-  // Semanal: ¿ya está marcado en la semana?
-  let alreadyCheckedWeek = false;
-  if (habit.cadence === "weekly") {
-    const startOfWeekLocal = (date: Date) => {
-      const d = new Date(date);
-      const day = d.getDay() || 7;
-      d.setDate(d.getDate() - day + 1);
-      return d;
-    };
-    const endOfWeekLocal = (date: Date) => {
-      const d = new Date(date);
-      const day = d.getDay() || 7;
-      d.setDate(d.getDate() - day + 7);
-      return d;
-    };
-    const weekStart = startOfWeekLocal(today);
-    const weekEnd = endOfWeekLocal(today);
-    for (let d = new Date(weekStart); d <= weekEnd; d.setDate(d.getDate() + 1)) {
-      const dStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-      if (checkins[dStr] > 0) alreadyCheckedWeek = true;
-    }
-  }
-
-  // Spinner para meta
-  let spinnerButton = null;
-  if (habit.allowMultiplePerDay && segments > 1) {
-    // Only reset when the stored count is strictly greater than segments
-    if (count > segments) count = 0;
-    const size = 32; // slightly smaller spinner so it fits centered inside the button
-    const stroke = 3;
-    const radius = (size - stroke) / 2;
-    const anglePerSegment = 360 / segments;
-    spinnerButton = (
-      <button
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onCheckin(habit.id);
-        }}
-        disabled={loading}
-        className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 transition-all shadow-md relative ${
-          loading
-            ? "opacity-50 cursor-not-allowed"
-            : "hover:scale-110 hover:shadow-xl active:scale-95 cursor-pointer hover:brightness-90"
-        }`}
-        style={{ backgroundColor: bgColor }}
-        title={`Check-ins hoy: ${count}/${segments}`}
-      >
-        <svg
-          width={size}
-          height={size}
-          className="absolute"
-          style={{
-            left: "50%",
-            top: "50%",
-            transform: "translate(-50%, -50%)",
-            transition: "all 0.28s cubic-bezier(.4,2,.3,1)",
-            overflow: "visible",
-          }}
-        >
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            stroke={darkMode ? "#444" : "#ddd"}
-            strokeWidth={stroke}
-            fill="none"
-          />
-          {Array.from({ length: segments }).map((_, i) => {
-            const filled = i < count;
-            const startAngle = (i * anglePerSegment - 90) * Math.PI / 180;
-            const endAngle = ((i + 1) * anglePerSegment - 90) * Math.PI / 180;
-            const x1 = size / 2 + radius * Math.cos(startAngle);
-            const y1 = size / 2 + radius * Math.sin(startAngle);
-            const x2 = size / 2 + radius * Math.cos(endAngle);
-            const y2 = size / 2 + radius * Math.sin(endAngle);
-            return (
-              <path
-                key={i}
-                d={`M ${x1} ${y1} A ${radius} ${radius} 0 0 1 ${x2} ${y2}`}
-                stroke={filled ? hex : (darkMode ? "#222" : "#eee")}
-                strokeWidth={stroke}
-                fill="none"
-                strokeLinecap="round"
-                style={{
-                  transition: "stroke 160ms ease, stroke-width 160ms ease, transform 180ms ease, opacity 180ms ease",
-                  transform: filled ? `scale(1.06)` : `scale(1)`,
-                  transformOrigin: `${size / 2}px ${size / 2}px`,
-                  opacity: filled ? 1 : 0.9,
-                }}
-              />
-            );
-          })}
-        </svg>
-      </button>
-    );
-  }
-
-  // Estado: marcado hoy (o esta semana para semanales)
-  const isCheckedToday = habit.cadence === "weekly" ? alreadyCheckedWeek : (count > 0);
+  const today = format(new Date(), "yyyy-MM-dd");
+  const todayCount = checkins[today] || 0;
+  const done = todayCount >= (habit.targetPerDay || 1);
+  const weekDays = ["L", "M", "X", "J", "V", "S", "D"];
 
   return (
-    <>
-      <div
-        className={`rounded-xl sm:rounded-2xl overflow-hidden transition-all cursor-pointer ${
-          darkMode
-            ? "bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 shadow-xl sm:shadow-2xl shadow-black/30 hover:border-gray-600/50"
-            : "bg-white border border-gray-200 shadow-md sm:shadow-lg shadow-gray-200/60 hover:border-gray-300"
-        }`}
-        onClick={() => setShowDetailModal(true)}
-      >
-      {/* Header con icono, título y botón de check - responsive */}
-      <div
-        className={`p-3 sm:p-4 flex ${
-          viewMode === "week"
-            ? "items-center gap-2 sm:gap-3"
-            : "items-start justify-between gap-2 sm:gap-3"
-        }`}
-      >
-        {/* Icono circular con color del hábito - responsive */}
-        <div
-          className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center text-xl sm:text-2xl shrink-0 shadow-sm"
-          style={{ backgroundColor: hex }}
-        >
-          {HabitIcon ? <HabitIcon size={18} /> : StarFallback ? <StarFallback size={18} /> : null}
-        </div>
-
-        {/* Título y descripción - responsive */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-            <h3
-              className={`font-semibold text-sm sm:text-base ${
-                darkMode ? "text-gray-50" : "text-gray-900"
-              }`}
-            >
-              {habit.title}
-            </h3>
-
-            {/* Badge de cadencia - responsive */}
-            <span
-              className={`text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-medium uppercase tracking-wide ${
-                darkMode ? "bg-gray-700 text-gray-300" : "bg-gray-100 text-gray-600"
-              }`}
-            >
-              <CadenceIcon
-                size={10}
-                className="inline-block mr-0.5 sm:mr-1 align-middle sm:w-3 sm:h-3"
-              />
-              <span className="hidden xs:inline">{cadenceBadge.label}</span>
-            </span>
-
-            {/* Badges de grupos - responsive */}
-            {groups.map((group) => {
-              const GroupIcon = (Icons[normalizeIconValue(group.icon || "Tag")] || Icons.Tag) as unknown as ComponentType<{ size?: number; className?: string }>;
-              return (
-                <span
-                  key={group.id}
-                  className="text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-medium flex items-center gap-0.5 sm:gap-1"
-                  style={{
-                    backgroundColor: `${group.color}30`,
-                    color: group.color
-                  }}
-                >
-                  <GroupIcon size={9} className="inline-block sm:w-2.5 sm:h-2.5" />
-                  <span className="hidden xs:inline">{group.name}</span>
-                </span>
-              );
-            })}
-
-            {streak > 0 && (
-              <span
-                className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-medium ${
-                  darkMode ? "text-white" : "text-gray-900"
-                }`}
-                style={{
-                  backgroundColor: `${(habit.color || DEFAULT_HABIT_COLOR)}30`,
-                  color: habit.color || DEFAULT_HABIT_COLOR
-                }}
-              >
-                <Flame size={10} className="inline-block mr-0.5 sm:mr-1 align-middle sm:w-3 sm:h-3" />
-                {streak}
-              </span>
+    <div style={{
+      borderRadius: 10, border: "1px solid var(--hairline)",
+      background: "var(--surface)", padding: "16px 20px",
+      display: "flex", flexDirection: "column", gap: 12,
+      transition: "border-color 120ms ease",
+    }}>
+      {/* Header row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {/* Check button */}
+        <button onClick={() => onCheckin(habit.id)} disabled={loading} style={{
+          width: 24, height: 24, borderRadius: "50%",
+          border: done ? "none" : "1.5px solid var(--faint)",
+          background: done ? "var(--ink)" : "transparent",
+          cursor: "pointer", flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          transition: "all 150ms ease",
+        }}>
+          {done && (
+            <svg width="11" height="11" viewBox="0 0 12 12">
+              <path d="M2 6l3 3 5-5" stroke="var(--inverse)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </button>
+        {/* Info */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 14, fontWeight: 500, color: "var(--ink)" }}>{habit.title}</span>
+            {todayCount > 1 && (
+              <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>×{todayCount}</span>
             )}
           </div>
           {habit.description && (
-            <p
-              className={`text-[11px] sm:text-xs mt-1 line-clamp-1 ${
-                darkMode ? "text-gray-400" : "text-gray-700"
-              }`}
-            >
-              {habit.description}
-            </p>
+            <p style={{ fontSize: 12, color: "var(--mute)", margin: "2px 0 0" }}>{habit.description}</p>
           )}
         </div>
-
-        {/* Botón de Check grande - esquina superior derecha (oculto en vista semanal) - responsive */}
-        {viewMode !== "week" && (
-          habit.cadence === "weekly" ? (
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (!alreadyCheckedWeek) onCheckin(habit.id);
-              }}
-              disabled={loading || alreadyCheckedWeek}
-              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center text-xl sm:text-2xl font-bold shrink-0 transition-all shadow-md ${
-                loading || alreadyCheckedWeek
-                  ? "opacity-50 cursor-not-allowed"
-                  : "hover:scale-110 hover:shadow-xl active:scale-95 cursor-pointer hover:brightness-90"
-              }`}
-              style={{ backgroundColor: alreadyCheckedWeek ? hex : bgColor, color: alreadyCheckedWeek ? "#fff" : hex }}
-              title={alreadyCheckedWeek ? "Ya marcado esta semana" : "Completar semana"}
-            >
-              <LucideIcons.Check size={20} className="sm:w-6 sm:h-6" color={alreadyCheckedWeek ? "#fff" : hex} />
-            </button>
-          ) : habit.allowMultiplePerDay && segments > 1 ? (
-            spinnerButton
-          ) : (
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onCheckin(habit.id);
-              }}
-              disabled={loading}
-              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center text-xl sm:text-2xl font-bold shrink-0 transition-all shadow-md ${
-                loading
-                  ? "opacity-50 cursor-not-allowed"
-                  : "hover:scale-110 hover:shadow-xl active:scale-95 cursor-pointer hover:brightness-90"
-              }`}
-              style={isCheckedToday ? { backgroundColor: hex, color: "#fff" } : { backgroundColor: "transparent", border: `2px solid ${hex}`, color: hex }}
-              title="Completar hoy"
-            >
-              {isCheckedToday ? <LucideIcons.Check size={18} className="sm:w-5 sm:h-5" color="#fff" /> : <LucideIcons.Check size={18} className="sm:w-5 sm:h-5" color={hex} />}
-            </button>
-          )
+        {/* Streak */}
+        {streak > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+            <span className="display tnum" style={{ fontSize: 16, fontWeight: 500, color: "var(--ink)" }}>{streak}</span>
+            <span className="mono" style={{ fontSize: 9, color: "var(--faint)", letterSpacing: "0.1em", textTransform: "uppercase" }}>días</span>
+          </div>
         )}
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+          <button onClick={() => onEdit(habit)} className="row-hover" style={{ padding: 4, borderRadius: 4, border: "none", background: "transparent", cursor: "pointer", color: "var(--faint)" }} title="Editar">
+            <svg width="13" height="13" viewBox="0 0 18 18" fill="none">
+              <path d="M3 15h3l8.5-8.5a1.5 1.5 0 0 0-2.1-2.1L4 13v2z" stroke="currentColor" strokeWidth="1.3" fill="none" />
+            </svg>
+          </button>
+          <button onClick={() => onArchive(habit.id)} className="row-hover" style={{ padding: 4, borderRadius: 4, border: "none", background: "transparent", cursor: "pointer", color: "var(--faint)" }} title="Archivar">
+            <svg width="13" height="13" viewBox="0 0 18 18" fill="none">
+              <rect x="2.5" y="3" width="13" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.2" fill="none" />
+              <line x1="6" y1="8" x2="12" y2="8" stroke="currentColor" strokeWidth="1.2" />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      {viewMode === "default" && (
-        <div
-          className={`px-3 pb-3 sm:px-4 sm:pb-4 ${darkMode ? "bg-gray-900/20" : "bg-gray-50/50"}`}
-        >
-          <HabitHeatmap
-            data={checkins}
-            from={dateRange.from}
-            to={dateRange.to}
-            color={habit.color || DEFAULT_HABIT_COLOR}
-            targetPerDay={habit.targetPerDay}
-            allowMultiplePerDay={habit.allowMultiplePerDay}
-            darkMode={darkMode}
-            cadence={habit.cadence}
-          />
-        </div>
-      )}
-
-      {viewMode === "month" && (
-        <div
-          className={`px-3 pb-3 sm:px-4 sm:pb-4 ${darkMode ? "bg-gray-900/20" : "bg-gray-50/60"}`}
-        >
-          <HabitCalendar
-            habit={habit}
-            data={checkins}
-            darkMode={darkMode}
-            onDayClick={handleCalendarDayClick}
-            getIntensity={getCalendarIntensity}
-            getHighlight={getWeeklyHighlightState}
-            colorWithAlpha={colorWithAlpha}
-          />
-        </div>
-      )}
-
-      {viewMode === "week" && weekDates.length > 0 && (
-        <div
-          className={`px-3 pb-3 sm:px-4 sm:pb-4 ${darkMode ? "bg-gray-900/10" : "bg-slate-50"}`}
-        >
-          <div className="grid grid-cols-7 gap-1.5 sm:gap-2 text-[9px] sm:text-[10px] uppercase tracking-[0.15em] sm:tracking-[0.2em] mb-1.5 sm:mb-2 text-center">
-            {weekDates.map((date) => (
-              <span
-                key={`label-${format(date, "yyyy-MM-dd")}`}
-                className={darkMode ? "text-gray-500" : "text-slate-500"}
-              >
-                {format(date, "EEE", { locale: es }).replace(".", "").slice(0, 2).toUpperCase()}
+      {/* Mini heatmap (last 7 days) */}
+      <div style={{ display: "flex", gap: 3 }}>
+        {Array.from({ length: 7 }, (_, i) => {
+          const d = format(new Date(Date.now() - (6 - i) * 86400000), "yyyy-MM-dd");
+          const count = checkins[d] || 0;
+          const target = habit.targetPerDay || 1;
+          const pct = Math.min(1, count / target);
+          const isToday = d === today;
+          return (
+            <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+              <div style={{
+                width: "100%", height: 22, borderRadius: 4,
+                background: pct === 0 ? "var(--whisper)" : pct >= 1 ? "var(--ink)" : "var(--hairline2)",
+                border: isToday ? "1.5px solid var(--ink)" : "none",
+                opacity: pct === 0 ? 1 : pct >= 1 ? 1 : 0.5,
+                transition: "all 120ms ease",
+              }} />
+              <span style={{ fontSize: 9, color: isToday ? "var(--ink)" : "var(--faint)", fontWeight: isToday ? 500 : 400 }}>
+                {weekDays[i]}
               </span>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
-            {weekDates.map((date) => {
-              const dateStr = format(date, "yyyy-MM-dd");
-              const dayCount = checkins[dateStr] || 0;
-              const isFuture = dateStr > todayStr;
-              const isToday = dateStr === todayStr;
-              const maxCount = habit.targetPerDay || 1;
-              const progress = habit.allowMultiplePerDay
-                ? Math.min(dayCount / maxCount, 1)
-                : dayCount > 0 ? 1 : 0;
-              const filled = dayCount > 0;
-              const highlightState = getWeeklyHighlightState(date);
-              const backgroundColor = (() => {
-                if (filled) {
-                  return habit.allowMultiplePerDay
-                    ? hexToRgba(hex, 0.25 + progress * 0.55)
-                    : hex;
-                }
-                if (highlightState === "selected") {
-                  return hex;
-                }
-                if (highlightState === "adjacent") {
-                  return hexToRgba(hex, 0.33);
-                }
-                return darkMode ? "rgba(148, 163, 184, 0.12)" : "rgba(15, 23, 42, 0.06)";
-              })();
-              const borderColor = filled || highlightState !== "none"
-                ? "transparent"
-                : darkMode
-                ? "rgba(148, 163, 184, 0.18)"
-                : "rgba(148, 163, 184, 0.22)";
-              const textColor = (() => {
-                if (filled) {
-                  return habit.allowMultiplePerDay
-                    ? darkMode
-                      ? "rgba(255,255,255,0.9)"
-                      : "#0f172a"
-                    : "#ffffff";
-                }
-                if (highlightState === "selected") {
-                  return "#ffffff";
-                }
-                if (highlightState === "adjacent") {
-                  return darkMode ? "rgba(226, 232, 240, 0.9)" : hex;
-                }
-                return darkMode ? "rgba(148, 163, 184, 0.85)" : "#64748b";
-              })();
-              const dayNumberColor = highlightState !== "none" || filled
-                ? textColor
-                : darkMode
-                ? "rgba(148, 163, 184, 0.75)"
-                : "#94a3b8";
-
-              return (
-                <button
-                  key={dateStr}
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleWeekCellToggle(date);
-                  }}
-                  disabled={isFuture}
-                  className={`h-10 sm:h-12 rounded-xl sm:rounded-2xl border flex items-center justify-center text-xs font-medium transition-all ${
-                    isFuture
-                      ? "opacity-40 cursor-not-allowed"
-                      : "hover:-translate-y-px active:scale-95"
-                  } ${
-                    isToday && !isFuture
-                      ? darkMode
-                        ? "ring-1 sm:ring-2 ring-offset-1 sm:ring-offset-2 ring-blue-500/70 ring-offset-gray-950"
-                        : "ring-1 sm:ring-2 ring-offset-1 sm:ring-offset-2 ring-blue-500/40 ring-offset-white"
-                      : ""
-                  }`}
-                  style={{ backgroundColor, borderColor, color: textColor }}
-                  title={`${dateStr}: ${dayCount} registro${dayCount === 1 ? "" : "s"}`}
-                  aria-label={`${dateStr}: ${dayCount} registro${dayCount === 1 ? "" : "s"}`}
-                  aria-pressed={filled}
-                >
-                  <div className="flex flex-col items-center gap-0.5 leading-none">
-                    <span
-                      className="text-[8px] sm:text-[9px] font-medium uppercase tracking-wide"
-                      style={{ color: dayNumberColor, opacity: 0.7 }}
-                    >
-                      {format(date, "MMM", { locale: es })}
-                    </span>
-                    <span
-                      className="text-[11px] sm:text-[13px] font-bold"
-                      style={{ color: dayNumberColor }}
-                    >
-                      {format(date, "d")}
-                    </span>
-                    {habit.allowMultiplePerDay ? (
-                      <span className="text-[10px] sm:text-[11px] font-semibold" style={{ color: textColor }}>
-                        {dayCount}/{maxCount}
-                      </span>
-                    ) : (
-                      <LucideIcons.Check
-                        size={12}
-                        className="sm:w-3.5 sm:h-3.5"
-                        color={textColor}
-                        style={{ opacity: filled ? 1 : 0 }}
-                      />
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+            </div>
+          );
+        })}
       </div>
 
-      {/* Modal de detalle */}
-      {showDetailModal && (
-        <HabitDetailModal
-          habit={habit}
-          data={checkins}
-          darkMode={darkMode}
-          onClose={() => setShowDetailModal(false)}
-          onBatchUpdateCheckins={(updates: Array<{ date: string; count: number }>) => onBatchUpdateCheckins(habit.id, updates)}
-          onEdit={onEdit}
-          onArchive={onArchive}
-          onDelete={onDelete}
-          onGroupsChange={onGroupsChange}
-          groups={allGroups}
-          habitGroups={groups}
-        />
+      {/* Groups badges */}
+      {groups && groups.length > 0 && (
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+          {groups.map(g => (
+            <span key={g.id} className="mono" style={{
+              padding: "2px 8px", borderRadius: 4,
+              border: "1px solid var(--hairline)", fontSize: 9,
+              color: "var(--faint)", letterSpacing: "0.06em",
+            }}>{g.name}</span>
+          ))}
+        </div>
       )}
-
-      </>
-    );
-  }
+    </div>
+  );
+}
