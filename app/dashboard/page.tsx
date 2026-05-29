@@ -245,7 +245,7 @@ export default function Dashboard() {
                         : <HabitIcon name={habit.icon || "star"} size={14} color="var(--faint)" />}
                     </div>
                   </div>
-                  <span style={{ flex: 1, fontSize: 14, color: done ? "var(--mute)" : "var(--ink)", textDecoration: done ? "line-through" : "none", textDecorationColor: "var(--faint)" }}>{habit.title}</span>
+                  <span style={{ flex: 1, fontSize: 14, color: done ? "var(--mute)" : "var(--ink)", textDecorationLine: done ? "line-through" : "none", textDecorationColor: "var(--faint)" }}>{habit.title}</span>
                   {s > 0 && <span className="mono" style={{ fontSize: 10, color: "var(--faint)", letterSpacing: "0.08em" }}>{s}d</span>}
                   {count > 1 && target > 1 && <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>×{count}</span>}
                   <span className="mono" style={{ fontSize: 9, color: "var(--faint)", transform: isExpanded ? "rotate(180deg)" : "none", transition: "transform 150ms ease" }}>▾</span>
