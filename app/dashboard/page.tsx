@@ -610,7 +610,7 @@ export default function Dashboard() {
     const month = String(today.getMonth() + 1).padStart(2, '0');
     const day = String(today.getDate()).padStart(2, '0');
     const todayISO = `${year}-${month}-${day}`;
-    
+
     const streaks: Record<number, number> = {};
 
     // Si no hay hábitos o no hay checkins cargados aún, retornar vacío
