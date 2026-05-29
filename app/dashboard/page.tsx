@@ -12,6 +12,7 @@ import { getCachedGroups, getCachedHabitGroups } from "@/lib/groupsCache";
 import { Stat, Hairline } from "@/components/ui/primitives";
 import { GroupFilter } from "@/components/groups/GroupFilter";
 import { ToastContainer } from "@/components/ui/Toast";
+import { HabitIcon } from "@/components/ui/habit-icon";
 
 type ViewMode = "list" | "heatmap" | "calendar";
 const VIEWS: { value: ViewMode; label: string }[] = [
@@ -217,21 +218,37 @@ export default function Dashboard() {
           {filtered.map(habit => {
             const s = streaks[habit.id] || 0;
             const c = checkins[habit.id] || {};
-            const done = (c[today] || 0) >= (habit.targetPerDay || 1);
+            const count = c[today] || 0;
+            const target = habit.targetPerDay || 1;
+            const done = count >= target;
+            const pct = Math.min(1, count / target);
+            // SVG arc for pie ring
+            const size = 36, sw = 2, r = (size - sw) / 2, circ = 2 * Math.PI * r;
             return (
               <div key={habit.id} className="row-hover" style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 8 }}>
+                {/* Pie ring + icon inside */}
                 <button onClick={() => handleCheckin(habit.id)} style={{
-                  width: 22, height: 22, borderRadius: "50%",
-                  border: done ? "none" : "1.5px solid var(--faint)",
-                  background: done ? "var(--ink)" : "transparent",
-                  cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                  transition: "all 150ms ease",
+                  position: "relative", width: size, height: size, flexShrink: 0,
+                  cursor: "pointer", border: "none", background: "transparent", padding: 0,
+                  transition: "transform 120ms ease",
                 }}>
-                  {done && <svg width="11" height="11" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="var(--inverse)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                  <svg width={size} height={size} style={{ transform: "rotate(-90deg)", display: "block" }}>
+                    <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--hairline)" strokeWidth={sw} />
+                    <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--ink)" strokeWidth={sw}
+                      strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={circ * (1 - pct)}
+                      style={{ transition: "stroke-dashoffset 400ms ease" }} />
+                  </svg>
+                  <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {done ? (
+                      <svg width="14" height="14" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="var(--ink)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    ) : (
+                      <HabitIcon name={habit.icon || "star"} size={14} color="var(--faint)" />
+                    )}
+                  </div>
                 </button>
                 <span style={{ flex: 1, fontSize: 14, color: done ? "var(--mute)" : "var(--ink)", textDecoration: done ? "line-through" : "none", textDecorationColor: "var(--faint)" }}>{habit.title}</span>
                 {s > 0 && <span className="mono" style={{ fontSize: 10, color: "var(--faint)", letterSpacing: "0.08em" }}>{s}d</span>}
-                {c[today] > 1 && <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>×{c[today]}</span>}
+                {count > 1 && target > 1 && <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>×{count}</span>}
                 <button onClick={() => handleDelete(habit.id)} className="row-hover" style={{ padding: "2px 6px", borderRadius: 4, border: "none", background: "transparent", cursor: "pointer", color: "var(--faint)", fontSize: 16, lineHeight: 1 }} title="Eliminar">×</button>
               </div>
             );
