@@ -15,7 +15,7 @@ export function HabitForm({ habit, onSubmit, onCancel, loading }: HabitFormProps
   const [title, setTitle] = useState(habit?.title || "");
   const [description, setDescription] = useState(habit?.description || "");
   const [icon, setIcon] = useState(habit?.icon || "star");
-  const [cadence, setCadence] = useState<"daily" | "weekly">((habit?.cadence as "daily" | "weekly") || "daily");
+  const [cadence, setCadence] = useState<string>((habit?.cadence as string) || "daily");
   const [target, setTarget] = useState(habit?.targetPerDay || 1);
 
   const handleSubmit = () => {

@@ -5,8 +5,7 @@ import { ICON_LIST } from "@/lib/icons";
 import { HabitIcon } from "@/components/ui/habit-icon";
 import { addToGroupsSyncQueue } from "@/lib/groupsSyncQueue";
 import { addGroupToCache, updateGroupInCache } from "@/lib/groupsCache";
-
-const COLORS = ["#111111", "#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4"];
+import { COLORS } from "@/lib/colors";
 
 interface GroupManagerProps {
   isOpen: boolean;
@@ -37,8 +36,12 @@ export function GroupManager({ isOpen, onClose, onSuccess, group }: GroupManager
       if (!res.ok) throw new Error("Error al guardar");
       const data = await res.json();
       const saved = data?.data || data;
-      if (group) { updateGroupInCache(saved); } else { addGroupToCache(saved); }
-      addToGroupsSyncQueue(group ? "update" : "create", saved);
+      if (group) { updateGroupInCache(saved.id, saved); } else { addGroupToCache(saved); }
+      addToGroupsSyncQueue(
+        group
+          ? { type: "update", groupId: saved.id, data: saved }
+          : { type: "create", data: { ...saved, tempId: crypto.randomUUID() } }
+      );
       onSuccess();
       onClose();
     } catch (e: any) { setError(e.message); }
@@ -50,7 +53,7 @@ export function GroupManager({ isOpen, onClose, onSuccess, group }: GroupManager
     setLoading(true);
     try {
       await fetch(`/api/groups/${group.id}`, { method: "DELETE" });
-      addToGroupsSyncQueue("delete", group);
+      addToGroupsSyncQueue({ type: "delete", groupId: group.id });
       onSuccess();
       onClose();
     } catch (e: any) { setError(e.message); }

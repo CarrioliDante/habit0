@@ -88,7 +88,7 @@ export function RadialRing({
   return (
     <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
       <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--hairline2)" strokeWidth={stroke} />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--hairline)" strokeWidth={stroke} />
         <circle
           cx={size/2} cy={size/2} r={r} fill="none"
           stroke="var(--ink)" strokeWidth={stroke}

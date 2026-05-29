@@ -1,105 +1,53 @@
 /**
  * Sistema de caché local para rutinas (offline-first)
+ * Delegates to localCache.ts generic helpers.
  */
 
+import { setCache, getCache, invalidateCache } from "@/lib/localCache";
 import type { Routine, RoutineProgress } from "@/types";
 
 const ROUTINES_CACHE_KEY = "habitar_routines_cache";
 const ROUTINE_PROGRESS_CACHE_KEY = "habitar_routine_progress_cache";
 
+// Cache TTLs
+const TTL_ROUTINES = 60 * 60 * 1000; // 1 hora
+const TTL_PROGRESS = 10 * 60 * 1000; // 10 minutos
+
 // Rutinas principales
 export function getCachedRoutines(): Routine[] | null {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const cached = localStorage.getItem(ROUTINES_CACHE_KEY);
-    if (!cached) return null;
-
-    const { data, timestamp } = JSON.parse(cached);
-
-    // Cache válido por 1 hora
-    const ONE_HOUR = 60 * 60 * 1000;
-    if (Date.now() - timestamp > ONE_HOUR) {
-      return null;
-    }
-
-    return data;
-  } catch (error) {
-    console.error("Error reading routines cache:", error);
-    return null;
-  }
+  return getCache<Routine[]>(ROUTINES_CACHE_KEY, TTL_ROUTINES);
 }
 
 export function setCachedRoutines(routines: Routine[]): void {
-  if (typeof window === "undefined") return;
+  // Filtrar duplicados por ID (solo IDs positivos, sin temporales)
+  const uniqueRoutines = routines.filter(r => r.id > 0);
+  const seen = new Set<number>();
+  const deduplicated = uniqueRoutines.filter(r => {
+    if (seen.has(r.id)) {
+      return false;
+    }
+    seen.add(r.id);
+    return true;
+  });
 
-  try {
-    // Filtrar duplicados por ID (solo IDs positivos, sin temporales)
-    const uniqueRoutines = routines.filter(r => r.id > 0);
-    const seen = new Set<number>();
-    const deduplicated = uniqueRoutines.filter(r => {
-      if (seen.has(r.id)) {
-        return false;
-      }
-      seen.add(r.id);
-      return true;
-    });
-
-    const cacheData = {
-      data: deduplicated,
-      timestamp: Date.now(),
-    };
-    localStorage.setItem(ROUTINES_CACHE_KEY, JSON.stringify(cacheData));
-  } catch (error) {
-    console.error("Error setting routines cache:", error);
-  }
+  setCache(ROUTINES_CACHE_KEY, deduplicated);
 }
 
 export function invalidateRoutinesCache(): void {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(ROUTINES_CACHE_KEY);
+  invalidateCache(ROUTINES_CACHE_KEY);
 }
 
 // Progreso de rutinas
 export function getCachedRoutineProgress(): Record<string, RoutineProgress> | null {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const cached = localStorage.getItem(ROUTINE_PROGRESS_CACHE_KEY);
-    if (!cached) return null;
-
-    const { data, timestamp } = JSON.parse(cached);
-
-    // Cache válido por 10 minutos (progreso cambia frecuentemente)
-    const TEN_MINUTES = 10 * 60 * 1000;
-    if (Date.now() - timestamp > TEN_MINUTES) {
-      return null;
-    }
-
-    return data;
-  } catch (error) {
-    console.error("Error reading routine progress cache:", error);
-    return null;
-  }
+  return getCache<Record<string, RoutineProgress>>(ROUTINE_PROGRESS_CACHE_KEY, TTL_PROGRESS);
 }
 
 export function setCachedRoutineProgress(progress: Record<string, RoutineProgress>): void {
-  if (typeof window === "undefined") return;
-
-  try {
-    const cacheData = {
-      data: progress,
-      timestamp: Date.now(),
-    };
-    localStorage.setItem(ROUTINE_PROGRESS_CACHE_KEY, JSON.stringify(cacheData));
-  } catch (error) {
-    console.error("Error setting routine progress cache:", error);
-  }
+  setCache(ROUTINE_PROGRESS_CACHE_KEY, progress);
 }
 
 export function invalidateRoutineProgressCache(): void {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(ROUTINE_PROGRESS_CACHE_KEY);
+  invalidateCache(ROUTINE_PROGRESS_CACHE_KEY);
 }
 
 // Agregar una rutina al caché

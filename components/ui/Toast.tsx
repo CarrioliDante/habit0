@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
-import { X, CheckCircle, AlertCircle, Info } from "lucide-react";
+// Inline SVG icons — no lucide-react dependency
 
 export type ToastType = "success" | "error" | "info";
 
@@ -37,9 +37,21 @@ export function Toast({ message, type, duration = 2000, onClose }: ToastProps) {
   }, [duration, handleClose]);
 
   const icons = {
-    success: <CheckCircle className="w-4 h-4 shrink-0" />,
-    error: <AlertCircle className="w-4 h-4 shrink-0" />,
-    info: <Info className="w-4 h-4 shrink-0" />,
+    success: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+      </svg>
+    ),
+    error: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+    ),
+    info: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+      </svg>
+    ),
   };
 
   const colors = {
@@ -70,7 +82,9 @@ export function Toast({ message, type, duration = 2000, onClose }: ToastProps) {
         className="ml-1 p-0.5 hover:bg-white/20 rounded transition-colors"
         aria-label="Close"
       >
-        <X className="w-3.5 h-3.5" />
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
       </button>
     </div>
   );

@@ -65,16 +65,11 @@ export function HabitList({
           checkins={habitCheckins[habit.id] || {}}
           streak={habitStreaks[habit.id] || 0}
           groups={habitGroups[habit.id] || []}
-          allGroups={allGroups}
           dateRange={dateRange}
-          viewMode={viewMode}
-          darkMode={darkMode}
           onCheckin={onCheckin}
           onEdit={onEdit}
           onArchive={onArchive}
           onDelete={onDelete}
-          onBatchUpdateCheckins={onBatchUpdateCheckins}
-          onGroupsChange={onGroupsChange}
           loading={loading}
         />
       ))}

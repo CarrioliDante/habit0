@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { Routine } from "@/types";
 import { ICON_LIST } from "@/lib/icons";
 import { HabitIcon } from "@/components/ui/habit-icon";
+import { COLORS } from "@/lib/colors";
 
 const WEEK = [
   { value: 1, label: "L" }, { value: 2, label: "M" }, { value: 3, label: "X" },
@@ -31,8 +32,6 @@ export function RoutineForm({ routine, onSubmit, onCancel, loading }: RoutineFor
     if (!name.trim()) return;
     onSubmit({ name: name.trim(), description: description.trim() || undefined, daysOfWeek: days, icon, color, order: routine?.order || 0 });
   };
-
-  const COLORS = ["#111111", "#3b82f6", "#8b5cf6", "#ec4899", "#10b981", "#f59e0b", "#ef4444"];
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.2)", backdropFilter: "blur(4px)" }} onClick={onCancel}>

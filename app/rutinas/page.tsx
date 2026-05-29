@@ -37,7 +37,7 @@ export default function RutinasPage() {
             const pd = await pr.json();
             setRoutines(prev => prev.map(p => p.id === r.id ? { ...p, progress: pd.data || pd } : p));
           }
-        } catch {}
+        } catch (e) { console.error("Error loading progress for routine", r.id, e); }
       }
     } catch (e: any) {
       showError(e.message);
@@ -84,7 +84,7 @@ export default function RutinasPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date: today, habitId, isChecked }),
       });
-    } catch {}
+    } catch (e) { console.error("Error toggling habit in routine", routineId, habitId, e); }
   };
 
   const todayRoutines = routines.filter(r => {

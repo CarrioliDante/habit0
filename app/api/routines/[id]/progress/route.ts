@@ -2,9 +2,122 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { routines, routineHabits, habits, checkins } from "@/db/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { getOrCreateInternalUser } from "@/lib/user";
 import type { ApiResponse, RoutineProgress } from "@/types";
+
+/**
+ * POST /api/routines/[id]/progress
+ * Toggle a habit in/out of a routine (add or remove from routine_habits)
+ */
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { userId: clerkId } = await auth();
+    if (!clerkId) {
+      return NextResponse.json<ApiResponse>(
+        { success: false, error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const u = await currentUser();
+    const me = await getOrCreateInternalUser(
+      clerkId,
+      u?.emailAddresses?.[0]?.emailAddress
+    );
+
+    const { id } = await params;
+    const routineId = parseInt(id, 10);
+
+    if (isNaN(routineId)) {
+      return NextResponse.json<ApiResponse>(
+        { success: false, error: "Invalid routine ID" },
+        { status: 400 }
+      );
+    }
+
+    // Verify the routine exists and belongs to the user
+    const [routine] = await db
+      .select()
+      .from(routines)
+      .where(and(eq(routines.id, routineId), eq(routines.userId, me.id)));
+
+    if (!routine) {
+      return NextResponse.json<ApiResponse>(
+        { success: false, error: "Routine not found" },
+        { status: 404 }
+      );
+    }
+
+    // Parse body — accept habitId (number) and optional date/isChecked
+    const body = await request.json();
+    const habitId = parseInt(body.habitId, 10);
+
+    if (isNaN(habitId)) {
+      return NextResponse.json<ApiResponse>(
+        { success: false, error: "Invalid habitId" },
+        { status: 400 }
+      );
+    }
+
+    // Check if the habit belongs to the user
+    const [habit] = await db
+      .select()
+      .from(habits)
+      .where(and(eq(habits.id, habitId), eq(habits.userId, me.id)));
+
+    if (!habit) {
+      return NextResponse.json<ApiResponse>(
+        { success: false, error: "Habit not found" },
+        { status: 404 }
+      );
+    }
+
+    // Check if habit is already in the routine
+    const [existing] = await db
+      .select()
+      .from(routineHabits)
+      .where(
+        and(
+          eq(routineHabits.routineId, routineId),
+          eq(routineHabits.habitId, habitId)
+        )
+      )
+      .limit(1);
+
+    if (existing) {
+      // Remove from routine
+      await db
+        .delete(routineHabits)
+        .where(eq(routineHabits.id, existing.id));
+    } else {
+      // Add to routine — find max order for this routine
+      const [maxOrder] = await db
+        .select({ max: sql<number>`COALESCE(MAX(${routineHabits.order}), 0)` })
+        .from(routineHabits)
+        .where(eq(routineHabits.routineId, routineId));
+
+      await db.insert(routineHabits).values({
+        routineId,
+        habitId,
+        order: (maxOrder?.max ?? 0) + 1,
+      });
+    }
+
+    return NextResponse.json<ApiResponse>({
+      success: true,
+    });
+  } catch (error) {
+    console.error("POST /api/routines/[id]/progress error:", error);
+    return NextResponse.json<ApiResponse>(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
 
 /**
  * GET /api/routines/[id]/progress?date=2024-01-15

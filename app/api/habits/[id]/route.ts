@@ -141,6 +141,7 @@ export async function PATCH(
     reminder: z.boolean().optional(),
     reminderTimeLocal: z.string().max(16).optional().nullable(),
     reminderDays: z.string().max(32).optional().nullable(),
+    jokerPolicy: z.string().max(32).optional(),
   });
 
   // Parsear y validar el body de la petición

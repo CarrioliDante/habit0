@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import type { Habit, Group } from "@/types";
 import { format as formatDate, subDays, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from "date-fns";
 import { es } from "date-fns/locale";
 import { getHabits, createHabit as apiCreateHabit, deleteHabit, updateHabit, getCheckins } from "@/lib/api";
 import { computeStreak } from "@/lib/metrics";
 import { useToast } from "@/lib/hooks/useToast";
-import { getCachedHabits, cacheHabits, getLocalCheckinsForHabit, saveLocalCheckin } from "@/lib/localCache";
+import { useCheckin } from "@/lib/hooks/useCheckin";
+import { getCachedHabits, cacheHabits, getLocalCheckinsForHabit } from "@/lib/localCache";
 import { getCachedGroups, getCachedHabitGroups } from "@/lib/groupsCache";
 import { Stat, Hairline } from "@/components/ui/primitives";
 import { GroupFilter } from "@/components/groups/GroupFilter";
@@ -42,6 +43,7 @@ export default function Dashboard() {
   const [editingGroup, setEditingGroup] = useState<Group | undefined>(undefined);
   const [settingsHabit, setSettingsHabit] = useState<Habit | null>(null);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
+  const checkinsCacheRef = useRef<Record<string, { from: string; to: string; data: Record<string, number> }>>({});
 
   const today = formatDate(new Date(), "yyyy-MM-dd");
   const active = habits.filter(h => !h.isArchived);
@@ -63,8 +65,23 @@ export default function Dashboard() {
     return active.filter(h => hgs?.[h.id]?.some(g => g.id === selectedGroupId));
   }, [active, selectedGroupId]);
 
+  const loadCheckins = useCallback(async (h: Habit[], cancelledRef?: { current: boolean }) => {
+    const isCancelled = () => cancelledRef?.current ?? false;
+    const results = await Promise.all(h.map(async habit => {
+      const local = getLocalCheckinsForHabit(habit.id);
+      const data = await getCheckins({ from: "2020-01-01", to: "2099-12-31", habitId: habit.id });
+      const m = { ...data.data };
+      for (const [d, c] of Object.entries(local)) m[d] = (m[d] || 0) + c;
+      return { id: habit.id, data: m };
+    }));
+    const map: Record<number, Record<string, number>> = {};
+    for (const r of results) map[r.id] = r.data;
+    if (!isCancelled()) setCheckins(map);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
+    const cancelledRef = { current: false };
     async function load() {
       try {
         setLoading(true);
@@ -73,23 +90,24 @@ export default function Dashboard() {
         if (cached?.length) { h = cached; setHabits(h); }
         else { h = await getHabits(); if (cancelled) return; cacheHabits(h); setHabits(h); }
         setLoading(false);
-        const results = await Promise.all(h.map(async habit => {
-          const local = getLocalCheckinsForHabit(habit.id);
-          const data = await getCheckins({ from: "2020-01-01", to: "2099-12-31", habitId: habit.id });
-          const m = { ...data.data };
-          for (const [d, c] of Object.entries(local)) m[d] = (m[d] || 0) + c;
-          return { id: habit.id, data: m };
-        }));
-        const map: Record<number, Record<string, number>> = {};
-        for (const r of results) map[r.id] = r.data;
-        if (!cancelled) setCheckins(map);
+        await loadCheckins(h, cancelledRef);
         const cg = getCachedGroups();
         if (cg) setGroups(cg);
       } catch (e: any) { if (!cancelled) setErr(e.message); setLoading(false); }
     }
     load();
-    return () => { cancelled = true; };
-  }, []);
+    return () => { cancelled = true; cancelledRef.current = true; };
+  }, [loadCheckins]);
+
+  const { handleCheckin: hookHandleCheckin } = useCheckin({
+    habitCheckins: checkins,
+    setHabitCheckins: setCheckins,
+    checkinsCacheRef,
+    loadMetrics: useCallback(async () => {
+      await loadCheckins(habits, { current: false });
+    }, [loadCheckins, habits]),
+    toast: { success, error: showError, info: (m) => success(m) },
+  });
 
   const streaks = useMemo(() => {
     const s: Record<number, number> = {};
@@ -105,16 +123,7 @@ export default function Dashboard() {
   const todayTotal = filtered.reduce((s, h) => s + (h.targetPerDay || 1), 0);
   const bestStreak = Math.max(0, ...Object.values(streaks));
 
-  const handleCheckin = async (habitId: number) => {
-    const newCount = (checkins[habitId]?.[today] || 0) + 1;
-    saveLocalCheckin(habitId, today, 1);
-    setCheckins(prev => ({ ...prev, [habitId]: { ...(prev[habitId] || {}), [today]: newCount } }));
-    try {
-      await fetch("/api/checkins", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ habitId, date: today, count: 1 }) });
-    } catch {
-      setCheckins(prev => ({ ...prev, [habitId]: { ...(prev[habitId] || {}), [today]: (prev[habitId]?.[today] || 1) - 1 } }));
-    }
-  };
+  const handleCheckin = (habit: Habit) => hookHandleCheckin(habit, today);
 
   const handleCreate = async (data: { title: string; description?: string; icon?: string; cadence: string; targetPerDay: number }) => {
     try {
@@ -231,7 +240,7 @@ export default function Dashboard() {
                       <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--hairline)" strokeWidth={sw} />
                       <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--ink)" strokeWidth={sw} strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={circ * (1 - pct)} style={{ transition: "stroke-dashoffset 400ms ease" }} />
                     </svg>
-                    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={e => { e.stopPropagation(); handleCheckin(habit.id); }}>
+                    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={e => { e.stopPropagation(); handleCheckin(habit); }}>
                       {done ? <svg width="14" height="14" viewBox="0 0 12 12"><path d="M2 6l3 3 5-5" stroke="var(--ink)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
                         : <HabitIcon name={habit.icon || "star"} size={14} color="var(--faint)" />}
                     </div>

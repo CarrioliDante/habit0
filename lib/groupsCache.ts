@@ -1,94 +1,42 @@
 /**
  * Sistema de caché local para grupos (offline-first)
+ * Delegates to localCache.ts generic helpers.
  */
 
+import { setCache, getCache, invalidateCache } from "@/lib/localCache";
 import type { Group } from "@/types";
 
 const GROUPS_CACHE_KEY = "habitar_groups_cache";
 const HABIT_GROUPS_CACHE_KEY = "habitar_habit_groups_cache";
 
+// Cache TTL: 1 hour for groups, 30 minutes for habit-groups relations
+const TTL_GROUPS = 60 * 60 * 1000;
+const TTL_HABIT_GROUPS = 30 * 60 * 1000;
+
 // Grupos principales
 export function getCachedGroups(): Group[] | null {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const cached = localStorage.getItem(GROUPS_CACHE_KEY);
-    if (!cached) return null;
-
-    const { data, timestamp } = JSON.parse(cached);
-
-    // Cache válido por 1 hora
-    const ONE_HOUR = 60 * 60 * 1000;
-    if (Date.now() - timestamp > ONE_HOUR) {
-      return null;
-    }
-
-    return data;
-  } catch (error) {
-    console.error("Error reading groups cache:", error);
-    return null;
-  }
+  return getCache<Group[]>(GROUPS_CACHE_KEY, TTL_GROUPS);
 }
 
 export function setCachedGroups(groups: Group[]): void {
-  if (typeof window === "undefined") return;
-
-  try {
-    const cacheData = {
-      data: groups,
-      timestamp: Date.now(),
-    };
-    localStorage.setItem(GROUPS_CACHE_KEY, JSON.stringify(cacheData));
-  } catch (error) {
-    console.error("Error setting groups cache:", error);
-  }
+  setCache(GROUPS_CACHE_KEY, groups);
 }
 
 export function invalidateGroupsCache(): void {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(GROUPS_CACHE_KEY);
+  invalidateCache(GROUPS_CACHE_KEY);
 }
 
 // Grupos de hábitos (relaciones habit -> groups)
 export function getCachedHabitGroups(): Record<number, Group[]> | null {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const cached = localStorage.getItem(HABIT_GROUPS_CACHE_KEY);
-    if (!cached) return null;
-
-    const { data, timestamp } = JSON.parse(cached);
-
-    // Cache válido por 30 minutos
-    const THIRTY_MINUTES = 30 * 60 * 1000;
-    if (Date.now() - timestamp > THIRTY_MINUTES) {
-      return null;
-    }
-
-    return data;
-  } catch (error) {
-    console.error("Error reading habit groups cache:", error);
-    return null;
-  }
+  return getCache<Record<number, Group[]>>(HABIT_GROUPS_CACHE_KEY, TTL_HABIT_GROUPS);
 }
 
 export function setCachedHabitGroups(habitGroups: Record<number, Group[]>): void {
-  if (typeof window === "undefined") return;
-
-  try {
-    const cacheData = {
-      data: habitGroups,
-      timestamp: Date.now(),
-    };
-    localStorage.setItem(HABIT_GROUPS_CACHE_KEY, JSON.stringify(cacheData));
-  } catch (error) {
-    console.error("Error setting habit groups cache:", error);
-  }
+  setCache(HABIT_GROUPS_CACHE_KEY, habitGroups);
 }
 
 export function invalidateHabitGroupsCache(): void {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(HABIT_GROUPS_CACHE_KEY);
+  invalidateCache(HABIT_GROUPS_CACHE_KEY);
 }
 
 // Actualizar grupos de un hábito específico en el caché

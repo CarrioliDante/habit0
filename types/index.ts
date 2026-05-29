@@ -11,6 +11,7 @@ export type Habit = {
   cadence: Cadence;
   targetPerDay: number;
   allowMultiplePerDay?: boolean; // Si permite múltiples check-ins por día
+  jokerPolicy?: string; // Política de días libres: "none", "weekly:1", "weekly:2", "monthly:3"
   isArchived?: boolean; // Indica si el hábito está archivado (soft delete)
 };
 
@@ -95,6 +96,7 @@ export type CreateHabitRequest = {
   cadence: Cadence;
   targetPerDay: number;
   allowMultiplePerDay?: boolean; // Permitir múltiples check-ins por día
+  jokerPolicy?: string; // Política de días libres
 };
 
 export type CreateCheckinRequest = {

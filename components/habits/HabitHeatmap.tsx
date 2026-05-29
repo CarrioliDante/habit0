@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState, useRef, useEffect } from "react";
-import { DEFAULT_HABIT_COLOR } from "@/lib/colors";
+import { DEFAULT_HABIT_COLOR, hexToRgb } from "@/lib/colors";
 import {
   eachDayOfInterval,
   format,
@@ -45,15 +45,7 @@ export function HabitHeatmap({
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Helper: convertir HEX a RGB
-  const hexToRgb = (hex: string) => {
-    const clean = hex.replace('#', '');
-    const bigint = parseInt(clean.length === 3 ? clean.split('').map(c=>c+c).join('') : clean, 16);
-    const r = (bigint >> 16) & 255;
-    const g = (bigint >> 8) & 255;
-    const b = bigint & 255;
-    return { r, g, b };
-  };
+  // Helper: convertir HEX a RGB (imported from @/lib/colors)
 
   // Devuelve una versión RGBA del color con la opacidad indicada (0-1)
   const colorWithAlpha = (hex: string, alpha = 1) => {

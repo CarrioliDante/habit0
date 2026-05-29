@@ -2,7 +2,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { format, subMonths, startOfWeek, endOfWeek, eachDayOfInterval, parseISO } from "date-fns";
 import { Archive, Trash2 } from "lucide-react";
-import { DEFAULT_HABIT_COLOR } from "@/lib/colors";
+import { DEFAULT_HABIT_COLOR, hexToRgb } from "@/lib/colors";
 import { Habit, Group } from "@/types";
 import { HabitHeatmap } from "./HabitHeatmap";
 import { EditableIcon } from "./EditableIcon";
@@ -177,18 +177,7 @@ export function HabitDetailModal({
     setEditedHabit(habit);
   }, [habit]);
 
-  // Helper: convertir HEX a RGB
-  const hexToRgb = (hex: string) => {
-    const clean = hex.replace("#", "");
-    const bigint = parseInt(
-      clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean,
-      16
-    );
-    const r = (bigint >> 16) & 255;
-    const g = (bigint >> 8) & 255;
-    const b = bigint & 255;
-    return { r, g, b };
-  };
+  // Helper: convertir HEX a RGB (imported from @/lib/colors)
 
   const colorWithAlpha = (hex: string, alpha = 1) => {
     const { r, g, b } = hexToRgb(hex || DEFAULT_HABIT_COLOR);
@@ -477,8 +466,8 @@ export function HabitDetailModal({
           {/* Configuración editable */}
           <HabitSettings
             habit={editedHabit}
-            darkMode={darkMode}
-            onHabitChange={handleHabitChange}
+            onChange={handleHabitChange}
+            onClose={() => {}}
           />
 
           {/* Grupos */}

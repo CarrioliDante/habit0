@@ -111,6 +111,7 @@ export async function processGroupsSyncQueue(): Promise<void> {
 async function executeGroupOperation(operation: GroupOperation): Promise<void> {
   switch (operation.type) {
     case "create": {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { tempId: _tempId, ...data } = operation.data;
       const response = await fetch("/api/groups", {
         method: "POST",

@@ -10,7 +10,7 @@ interface HabitSettingsProps {
 }
 
 export function HabitSettings({ habit, onChange, onClose }: HabitSettingsProps) {
-  const [cadence, setCadence] = useState(habit.cadence || "daily");
+  const [cadence, setCadence] = useState<string>(habit.cadence || "daily");
   const [target, setTarget] = useState(habit.targetPerDay || 1);
   const [color, setColor] = useState(habit.color || COLORS[0]);
   const [multiple, setMultiple] = useState(!!habit.allowMultiplePerDay);
