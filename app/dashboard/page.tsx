@@ -85,7 +85,10 @@ export default function Dashboard() {
     const s: Record<number, number> = {};
     for (const h of habits) {
       const checkins = habitCheckins[h.id] || {};
-      s[h.id] = computeStreak(h, checkins);
+      const dates = Object.entries(checkins)
+        .filter(([_, count]) => count > 0)
+        .map(([date]) => date);
+      s[h.id] = computeStreak(dates, today, { cadence: h.cadence });
     }
     setStreaks(s);
   }, [habits, habitCheckins]);
